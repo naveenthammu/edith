@@ -93,8 +93,10 @@ class LLMUnavailable(Exception):
 
 class LLM:
     def __init__(self, remote, model: str, local_factory: Callable, on_fallback: Callable | None = None,
-                 clock: Callable[[], float] = time.monotonic):
+                 clock: Callable[[], float] = time.monotonic, local_ready: Callable[[], bool] = lambda: True):
         self.remote = remote
+        self.local_ready = local_ready  # True once the local model file is on disk
+        self.force_offline = False  # set by the user's "switch to offline mode"
         self.model = model
         self.local_factory = local_factory
         self.on_fallback = on_fallback
@@ -105,7 +107,7 @@ class LLM:
         self._local_retry_at = 0.0
 
     def chat(self, messages: list[dict], tools: list[dict]) -> Reply:
-        if self.remote is not None and self.clock() >= self._offline_until:
+        if self.remote is not None and not self.force_offline and self.clock() >= self._offline_until:
             try:
                 reply = self._remote_chat(messages, tools)
                 self._announced = False
@@ -129,6 +131,12 @@ class LLM:
             log.exception("local model failed")
             self._local_retry_at = self.clock() + RETRY_REMOTE_AFTER
             raise LLMUnavailable(str(e)) from e
+
+    def go_online(self) -> None:
+        """Use FreeLLMAPI again on the next request."""
+        self.force_offline = False
+        self._offline_until = 0.0
+        self._announced = False
 
     def _remote_chat(self, messages: list[dict], tools: list[dict]) -> Reply:
         extra = {"tools": tools} if tools else {}
@@ -189,4 +197,5 @@ def build_llm(cfg, on_fallback: Callable | None = None) -> LLM:
         cfg.model,
         local_factory=lambda: LocalModel(download_local_model(cfg.models_dir, local_only=True)),
         on_fallback=on_fallback,
+        local_ready=lambda: (cfg.models_dir / LOCAL_FILE).exists(),
     )

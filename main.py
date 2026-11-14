@@ -48,7 +48,7 @@ def main() -> None:
     from brain.agent import Agent
     from brain.llm import build_llm, prefetch_local_model
     from config import load_config, setup_logging
-    from skills import productivity
+    from skills import assistant, productivity
     from voice.stt import Listener
     from voice.tts import Speaker
     from voice.wake import WakeWord, ensure_vosk_model
@@ -64,6 +64,7 @@ def main() -> None:
     wake = WakeWord(ensure_vosk_model(cfg.models_dir), cfg.wake_word)
     prefetch_local_model(cfg.models_dir)  # background download so offline fallback is ready later
     llm = build_llm(cfg, on_fallback=lambda: speaker.say("Switching to offline mode, sir."))
+    assistant.llm = llm
 
     def confirm(action: str) -> bool:
         speaker.say(f"Are you sure you want to {action}?")

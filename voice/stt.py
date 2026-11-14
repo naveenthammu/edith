@@ -10,6 +10,10 @@ SAMPLE_RATE = 16000
 CHUNK_SEC = 0.1
 EPS = 1e-9  # repeated 0.1 additions are not exact in floating point
 PRE_ROLL_CHUNKS = 3  # keep 0.3 s before speech starts
+# Biases Whisper toward EDITH's words: short commands like "notepad" were heard as "not bad".
+VOCABULARY = ("Edith, open notepad, calculator, VS Code, Chrome, YouTube, WhatsApp, Instagram, Gmail, "
+              "weather, Wikipedia, volume up, volume down, mute, screenshot, battery, remind me, note, "
+              "lock the PC, shutdown, switch to offline mode, switch to online mode.")
 
 
 def collect_speech(chunks: Iterator[np.ndarray], chunk_sec: float, threshold: float,
@@ -77,5 +81,6 @@ class Listener:
                 break
         if audio is None:
             return None
-        segments, _ = self.model.transcribe(audio, language="en", beam_size=1, vad_filter=True)
+        segments, _ = self.model.transcribe(audio, language="en", beam_size=1, vad_filter=True,
+                                            initial_prompt=VOCABULARY)
         return " ".join(s.text.strip() for s in segments).strip()

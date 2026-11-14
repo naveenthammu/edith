@@ -123,3 +123,26 @@ def test_open_app_unknown_plain_name_uses_start_menu(monkeypatch):
     monkeypatch.setattr(web.time, "sleep", lambda s: None)
     assert not web.open_app("spotify").startswith("error")
     assert ("write", "spotify") in fake.calls
+
+
+from brain.llm import LLM
+from skills import assistant
+
+
+def test_brain_mode_switch(monkeypatch):
+    ready = [False]
+    llm = LLM(object(), "m", local_factory=lambda: None, local_ready=lambda: ready[0])
+    monkeypatch.setattr(assistant, "llm", llm)
+
+    assert "still downloading" in assistant.set_brain_mode("offline")
+    assert llm.force_offline is False
+
+    ready[0] = True
+    assert assistant.set_brain_mode("Offline") == "Switched to offline mode."
+    assert llm.force_offline is True
+
+    llm._offline_until = 999.0
+    assert assistant.set_brain_mode("online") == "Switched to online mode."
+    assert llm.force_offline is False and llm._offline_until == 0.0
+
+    assert assistant.set_brain_mode("sideways").startswith("error")

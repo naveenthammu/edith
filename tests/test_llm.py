@@ -243,3 +243,11 @@ def test_fallback_announcement_failure_does_not_break_chat():
     llm = LLM(FakeRemote(error=_connection_error()), "auto", local_factory=lambda: FakeLocal("still here"),
               on_fallback=boom)
     assert llm.chat(MSGS, TOOLS).text == "still here"
+
+
+def test_force_offline_skips_remote():
+    remote = FakeRemote(error=_connection_error())
+    llm = LLM(remote, "auto", local_factory=lambda: FakeLocal("local only"))
+    llm.force_offline = True
+    assert llm.chat(MSGS, TOOLS).text == "local only"
+    assert remote.calls == 0
