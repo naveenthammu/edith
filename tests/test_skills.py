@@ -61,3 +61,33 @@ def test_battery_reports_status(monkeypatch):
     assert system.battery() == "Battery at 82 percent, charging."
     monkeypatch.setattr(system.psutil, "sensors_battery", lambda: None)
     assert system.battery() == "No battery found on this PC."
+
+
+import threading
+
+from skills import productivity
+
+
+def test_notes_round_trip(tmp_path, monkeypatch):
+    monkeypatch.setattr(productivity, "NOTES_FILE", tmp_path / "notes.txt")
+    assert productivity.read_notes() == "You have no notes."
+    productivity.add_note("buy milk")
+    productivity.add_note("call mom")
+    notes = productivity.read_notes()
+    assert "buy milk" in notes and "call mom" in notes
+    assert notes.index("buy milk") < notes.index("call mom")
+
+
+def test_reminder_announces(monkeypatch):
+    fired = threading.Event()
+    said = []
+    monkeypatch.setattr(productivity, "announce", lambda text: (said.append(text), fired.set()))
+    monkeypatch.setattr(productivity, "SECONDS_PER_MINUTE", 0.01)
+
+    assert productivity.set_reminder(1, "stretch") == "Reminder set for 1 minutes."
+    assert fired.wait(2)
+    assert said == ["Reminder, sir: stretch"]
+
+
+def test_reminder_rejects_bad_minutes():
+    assert productivity.set_reminder(0, "x").startswith("error")
