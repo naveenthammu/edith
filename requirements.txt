@@ -12,3 +12,4 @@ huggingface_hub>=0.23
 pytest>=8.0
 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 llama-cpp-python>=0.3
+pywebview>=6.0

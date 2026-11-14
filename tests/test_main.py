@@ -63,3 +63,10 @@ def test_converse_leaves_after_three_empty_transcripts():
     speaker = FakeSpeaker()
     converse(EchoAgent(), FakeListener(["", "", ""]), speaker)
     assert speaker.said == ["I didn't catch that, sir."] * 3
+
+
+def test_converse_reports_each_turn_for_history():
+    turns = []
+    converse(EchoAgent(), FakeListener(["hello", "", "bye"]), FakeSpeaker(),
+             lambda who, text: turns.append((who, text)))
+    assert turns == [("you", "hello"), ("edith", "you said hello"), ("you", "bye"), ("edith", "Goodbye sir.")]

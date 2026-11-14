@@ -58,7 +58,7 @@ def heard_self(before: int, speaker) -> bool:
 
 
 class Listener:
-    def __init__(self, models_dir: Path, threshold: float = 0.01, model_name: str = "base.en", speaker=None):
+    def __init__(self, models_dir: Path, threshold: float = 0.01, model_name: str = "small.en", speaker=None):
         from faster_whisper import WhisperModel
 
         self.threshold = threshold
@@ -81,6 +81,6 @@ class Listener:
                 break
         if audio is None:
             return None
-        segments, _ = self.model.transcribe(audio, language="en", beam_size=1, vad_filter=True,
+        segments, _ = self.model.transcribe(audio, language="en", beam_size=5, vad_filter=True,
                                             initial_prompt=VOCABULARY)
         return " ".join(s.text.strip() for s in segments).strip()
