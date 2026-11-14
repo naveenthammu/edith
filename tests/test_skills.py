@@ -21,3 +21,24 @@ def test_open_website_rejects_bad_scheme(monkeypatch):
     assert opened == []
     web.open_website("github.com")
     assert opened == ["https://github.com"]
+
+
+from skills import media
+
+
+def test_first_video_id_found():
+    html = 'var ytInitialData = {"contents":[{"videoRenderer":{"videoId":"NeXbmEnpSz0","title":"x"}}]}'
+    assert media.first_video_id(html) == "NeXbmEnpSz0"
+
+
+def test_first_video_id_missing():
+    assert media.first_video_id("<html>consent page</html>") is None
+
+
+def test_volume_rejects_unknown_action(monkeypatch):
+    pressed = []
+    monkeypatch.setattr(media, "_press", lambda key, presses: pressed.append((key, presses)))
+    assert media.volume("louder").startswith("error")
+    media.volume("up", 3)
+    media.volume("mute")
+    assert pressed == [("volumeup", 3), ("volumemute", 1)]
