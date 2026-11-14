@@ -1,6 +1,7 @@
 import json
 import logging
 import queue
+import shutil
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -23,8 +24,12 @@ def ensure_vosk_model(models_dir: Path) -> Path:
     archive = models_dir / f"{VOSK_NAME}.zip"
     log.info("downloading %s", VOSK_URL)
     urllib.request.urlretrieve(VOSK_URL, archive)
+    tmp = models_dir / (VOSK_NAME + ".tmp")
+    shutil.rmtree(tmp, ignore_errors=True)
     with zipfile.ZipFile(archive) as z:
-        z.extractall(models_dir)
+        z.extractall(tmp)
+    (tmp / VOSK_NAME).rename(target)  # only a complete model ever appears at target
+    shutil.rmtree(tmp, ignore_errors=True)
     archive.unlink()
     return target
 
@@ -47,7 +52,10 @@ class WakeWord:
         with sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=4000, dtype="int16", channels=1,
                                callback=lambda data, *_: q.put(bytes(data))):
             while True:
-                data = q.get()
+                try:
+                    data = q.get(timeout=0.5)  # wake up so Ctrl+C works on Windows
+                except queue.Empty:
+                    continue
                 if rec.AcceptWaveform(data):
                     text = json.loads(rec.Result())["text"]
                 else:

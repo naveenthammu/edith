@@ -1,3 +1,4 @@
+import re
 import subprocess
 import time
 import webbrowser
@@ -60,6 +61,9 @@ def open_app(name: str) -> str:
         # Safe: target comes from the fixed APPS map, never from user text.
         subprocess.Popen(f'start "" {target}', shell=True)
         return f"Opened {name}"
+    # Windows Search runs command lines, so only plain app names may be typed.
+    if not re.fullmatch(r"[A-Za-z0-9 .+-]{1,40}", name.strip()):
+        return "error: unknown app name"
     import pyautogui
 
     pyautogui.press("win")

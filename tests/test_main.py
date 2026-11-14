@@ -1,4 +1,4 @@
-from main import converse, is_goodbye
+from main import converse, is_goodbye, is_yes
 
 
 def test_is_goodbye():
@@ -49,3 +49,17 @@ def test_converse_returns_on_microphone_error():
     speaker = FakeSpeaker()
     converse(EchoAgent(), FakeListener([OSError("no mic")]), speaker)
     assert speaker.said == ["I can't hear you, sir. Please check the microphone."]
+
+
+def test_is_yes_whole_word_only():
+    assert is_yes("yes")
+    assert is_yes("Yes, do it.")
+    assert not is_yes("yesterday")
+    assert not is_yes("eyes")
+    assert not is_yes("")
+
+
+def test_converse_leaves_after_three_empty_transcripts():
+    speaker = FakeSpeaker()
+    converse(EchoAgent(), FakeListener(["", "", ""]), speaker)
+    assert speaker.said == ["I didn't catch that, sir."] * 3

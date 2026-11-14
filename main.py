@@ -13,8 +13,13 @@ def is_goodbye(text: str) -> bool:
     return len(words) <= 3 and bool(GOODBYE_WORDS & set(words))
 
 
+def is_yes(text: str) -> bool:
+    return "yes" in re.findall(r"[a-z]+", text.lower())
+
+
 def converse(agent, listener, speaker) -> None:
     """Talk without the wake word until silence, goodbye, or a microphone error."""
+    empty = 0
     while True:
         try:
             text = listener.listen(start_timeout=10.0)
@@ -26,7 +31,11 @@ def converse(agent, listener, speaker) -> None:
             return
         if not text:
             speaker.say("I didn't catch that, sir.")
+            empty += 1
+            if empty >= 3:
+                return
             continue
+        empty = 0
         print(f"You: {text}")
         if is_goodbye(text):
             speaker.say("Goodbye sir.")
@@ -51,7 +60,7 @@ def main() -> None:
 
     skills.load_all()
     productivity.announce = lambda text: speaker.say(text, wait=False)
-    listener = Listener(cfg.models_dir, cfg.mic_threshold)
+    listener = Listener(cfg.models_dir, cfg.mic_threshold, speaker=speaker)
     wake = WakeWord(ensure_vosk_model(cfg.models_dir), cfg.wake_word)
     prefetch_local_model(cfg.models_dir)  # background download so offline fallback is ready later
     llm = build_llm(cfg, on_fallback=lambda: speaker.say("Switching to offline mode, sir."))
@@ -59,7 +68,7 @@ def main() -> None:
     def confirm(action: str) -> bool:
         speaker.say(f"Are you sure you want to {action}?")
         answer = listener.listen(start_timeout=6.0) or ""
-        return "yes" in answer.lower()
+        return is_yes(answer)
 
     agent = Agent(llm, confirm)
     speaker.say("Edith 3 point o is online. Say Edith when you need me.")

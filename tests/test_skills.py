@@ -90,4 +90,36 @@ def test_reminder_announces(monkeypatch):
 
 
 def test_reminder_rejects_bad_minutes():
-    assert productivity.set_reminder(0, "x").startswith("error")
+    for bad in (0, 2000, float("nan")):
+        assert productivity.set_reminder(bad, "x").startswith("error")
+
+
+import sys
+
+
+class FakePyAutoGui:
+    def __init__(self):
+        self.calls = []
+
+    def press(self, key):
+        self.calls.append(("press", key))
+
+    def write(self, text, interval=0):
+        self.calls.append(("write", text))
+
+
+def test_open_app_rejects_command_like_names(monkeypatch):
+    fake = FakePyAutoGui()
+    monkeypatch.setitem(sys.modules, "pyautogui", fake)
+    monkeypatch.setattr(web.time, "sleep", lambda s: None)
+    for bad in ("shutdown /s /t 0", "cmd /c calc", r"C:\Windows\x.exe"):
+        assert web.open_app(bad).startswith("error")
+    assert fake.calls == []
+
+
+def test_open_app_unknown_plain_name_uses_start_menu(monkeypatch):
+    fake = FakePyAutoGui()
+    monkeypatch.setitem(sys.modules, "pyautogui", fake)
+    monkeypatch.setattr(web.time, "sleep", lambda s: None)
+    assert not web.open_app("spotify").startswith("error")
+    assert ("write", "spotify") in fake.calls

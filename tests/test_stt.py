@@ -1,6 +1,10 @@
+import threading
+
 import numpy as np
 
-from voice.stt import collect_speech
+from types import SimpleNamespace
+
+from voice.stt import collect_speech, heard_self
 
 CHUNK = 0.1  # seconds per chunk
 
@@ -37,3 +41,11 @@ def test_stops_at_max_length():
 def test_short_pause_does_not_stop_recording():
     audio = run([loud()] * 2 + [quiet()] * 3 + [loud()] * 2 + [quiet()] * 10)
     assert len(audio) == (2 + 3 + 2 + 5) * 1600
+
+
+def test_heard_self():
+    assert not heard_self(2, SimpleNamespace(utterances=2, speaking=threading.Event()))
+    assert heard_self(2, SimpleNamespace(utterances=3, speaking=threading.Event()))
+    speaking = threading.Event()
+    speaking.set()
+    assert heard_self(2, SimpleNamespace(utterances=2, speaking=speaking))

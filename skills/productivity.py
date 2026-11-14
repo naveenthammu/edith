@@ -14,8 +14,8 @@ announce = print
 @skill()
 def set_reminder(minutes: float, message: str) -> str:
     """Remind the user with a spoken message after a number of minutes."""
-    if minutes <= 0:
-        return "error: minutes must be more than zero"
+    if not (0 < minutes <= 1440):  # also rejects NaN
+        return "error: minutes must be between 0 and 1440"
     # shortcut: reminders live in memory and are lost on restart; persist to a file if that matters.
     timer = threading.Timer(minutes * SECONDS_PER_MINUTE, lambda: announce(f"Reminder, sir: {message}"))
     timer.daemon = True

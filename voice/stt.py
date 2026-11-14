@@ -1,4 +1,5 @@
 import queue
+import time
 from pathlib import Path
 from typing import Iterator
 
@@ -36,24 +37,39 @@ def mic_chunks(chunk_sec: float = CHUNK_SEC) -> Iterator[np.ndarray]:
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32",
                         blocksize=int(SAMPLE_RATE * chunk_sec), callback=lambda data, *_: q.put(data[:, 0].copy())):
         while True:
-            yield q.get()
+            try:
+                yield q.get(timeout=0.5)  # wake up so Ctrl+C works on Windows
+            except queue.Empty:
+                continue
+
+
+def heard_self(before: int, speaker) -> bool:
+    """True if EDITH spoke while we were recording, so the audio is her own voice."""
+    return speaker.utterances != before or speaker.speaking.is_set()
 
 
 class Listener:
-    def __init__(self, models_dir: Path, threshold: float = 0.01, model_name: str = "base.en"):
+    def __init__(self, models_dir: Path, threshold: float = 0.01, model_name: str = "base.en", speaker=None):
         from faster_whisper import WhisperModel
 
         self.threshold = threshold
+        self.speaker = speaker
         self.model = WhisperModel(model_name, device="cpu", compute_type="int8",
                                   download_root=str(models_dir / "whisper"))
 
     def listen(self, start_timeout: float = 10.0, silence: float = 1.0, max_len: float = 15.0) -> str | None:
         """Return the spoken text, "" if speech was unclear, or None if nobody spoke before start_timeout."""
-        chunks = mic_chunks()
-        try:
-            audio = collect_speech(chunks, CHUNK_SEC, self.threshold, start_timeout, silence, max_len)
-        finally:
-            chunks.close()  # closes the microphone stream
+        while True:
+            while self.speaker and self.speaker.speaking.is_set():
+                time.sleep(0.05)
+            before = self.speaker.utterances if self.speaker else 0
+            chunks = mic_chunks()
+            try:
+                audio = collect_speech(chunks, CHUNK_SEC, self.threshold, start_timeout, silence, max_len)
+            finally:
+                chunks.close()  # closes the microphone stream
+            if not (self.speaker and heard_self(before, self.speaker)):
+                break
         if audio is None:
             return None
         segments, _ = self.model.transcribe(audio, language="en", beam_size=1, vad_filter=True)

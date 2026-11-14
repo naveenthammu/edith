@@ -28,6 +28,7 @@ The first run downloads the Vosk model (about 50 MB) and the Whisper model (abou
 - Say "Edith", wait for "Yes sir?", then speak.
 - Keep talking without the wake word. After 10 seconds of silence, or "bye", EDITH goes back to waiting for "Edith".
 - Lock, sleep and shutdown always ask "Are you sure?" first. Say "yes" to go ahead.
+- Settings in `.env`: `MIC_THRESHOLD` (raise it if background noise keeps EDITH recording, lower it if she misses your voice) and `WAKE_WORD` (default `edith`).
 
 ## Tests
 
