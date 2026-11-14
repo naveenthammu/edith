@@ -1,5 +1,6 @@
 import queue
 import time
+from collections import deque
 from pathlib import Path
 from typing import Iterator
 
@@ -8,21 +9,25 @@ import numpy as np
 SAMPLE_RATE = 16000
 CHUNK_SEC = 0.1
 EPS = 1e-9  # repeated 0.1 additions are not exact in floating point
+PRE_ROLL_CHUNKS = 3  # keep 0.3 s before speech starts
 
 
 def collect_speech(chunks: Iterator[np.ndarray], chunk_sec: float, threshold: float,
                    start_timeout: float, silence: float, max_len: float) -> np.ndarray | None:
-    """Return audio from the first loud chunk until `silence` seconds of quiet, or None if nobody spoke."""
+    """Return audio from just before the first loud chunk until `silence` seconds of quiet, or None if nobody spoke."""
     frames: list[np.ndarray] = []
+    pre_roll: deque[np.ndarray] = deque(maxlen=PRE_ROLL_CHUNKS)  # quiet first syllables sit below the threshold
     waited = quiet = 0.0
     for chunk in chunks:
         loud = float(np.sqrt(np.mean(chunk ** 2))) > threshold
         if not frames:
             if not loud:
+                pre_roll.append(chunk)
                 waited += chunk_sec
                 if waited + EPS >= start_timeout:
                     return None
                 continue
+            frames.extend(pre_roll)
         frames.append(chunk)
         quiet = 0.0 if loud else quiet + chunk_sec
         if quiet + EPS >= silence or len(frames) * chunk_sec + EPS >= max_len:

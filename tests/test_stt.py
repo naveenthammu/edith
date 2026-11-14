@@ -29,8 +29,13 @@ def test_returns_none_when_nobody_speaks():
 
 def test_records_speech_until_silence():
     audio = run([quiet()] * 3 + [loud()] * 4 + [quiet()] * 10)
-    # 4 loud chunks + 5 quiet chunks (0.5 s of silence ends the recording)
-    assert len(audio) == 9 * 1600
+    # 3 pre-roll quiet chunks + 4 loud chunks + 5 quiet chunks (0.5 s of silence ends the recording)
+    assert len(audio) == 12 * 1600
+
+
+def test_pre_roll_keeps_at_most_three_chunks():
+    audio = run([quiet()] * 8 + [loud()] * 2 + [quiet()] * 10)
+    assert len(audio) == (3 + 2 + 5) * 1600
 
 
 def test_stops_at_max_length():
