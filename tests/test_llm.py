@@ -59,7 +59,8 @@ def test_to_local_messages_converts_tool_turns():
     out = to_local_messages(messages, TOOLS)
 
     assert out[0]["role"] == "system"
-    assert out[0]["content"].startswith("You are EDITH.")
+    assert out[0]["content"].startswith("You can use these tools:")  # static prefix stays cached
+    assert out[0]["content"].endswith("You are EDITH.")
     assert "get_weather" in out[0]["content"]
     assert out[1] == {"role": "user", "content": "weather in Pune"}
     assert json.loads(out[2]["content"]) == {"tool": "get_weather", "args": {"city": "Pune"}}

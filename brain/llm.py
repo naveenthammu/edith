@@ -65,8 +65,10 @@ def to_local_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
     for m in messages:
         role = m["role"]
         if role == "system":
-            extra = "\n\n" + LOCAL_TOOL_PROMPT.format(tools=tool_lines) if tools else ""
-            out.append({"role": "system", "content": m["content"] + extra})
+            # Fixed tool list first: llama-cpp reuses a cached prompt prefix, and the persona text
+            # changes every minute (it holds the time), so putting it first forced a ~25 s re-read.
+            tool_text = LOCAL_TOOL_PROMPT.format(tools=tool_lines) + "\n\n" if tools else ""
+            out.append({"role": "system", "content": tool_text + m["content"]})
         elif role == "tool":
             out.append({"role": "user", "content": f"Tool result: {m['content'][:500]}"})
         elif role == "assistant" and m.get("tool_calls"):
