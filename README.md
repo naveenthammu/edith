@@ -37,3 +37,12 @@ venv/Scripts/python -m pytest
 ```
 
 Logs are in `data/edith.log`. Notes are in `data/notes.txt`.
+
+## Galactic Voyage visualization
+
+The standalone interactive Sun-and-planets visualization is in
+[`edith-sun-galaxy.html`](./edith-sun-galaxy.html). It is separate from the
+Python voice assistant and runs directly in a modern browser without installing
+packages. See the [visualizer guide](./docs/galaxy-visualizer.md) for controls,
+implementation details, run instructions, customization, and reuse in other
+projects.
