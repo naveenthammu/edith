@@ -114,3 +114,27 @@ def test_reset_clears_history():
     agent.handle("hi")
     agent.reset()
     assert agent.history == []
+
+
+def test_forced_final_reply_stored_as_plain_text():
+    llm = ScriptedLLM([_call("ping"), _call("ping"), _call("ping"), _call("ping")])
+    agent = Agent(llm, confirm=lambda a: True, registry=_registry(ping=(lambda: "pong", False)))
+
+    assert agent.handle("ping a lot") == "Done, sir."
+    assert agent.history[-1] == {"role": "assistant", "content": "Done, sir."}
+
+
+def test_arguments_coerced_to_schema_types():
+    schema = {"type": "function", "function": {"name": "wait", "parameters": {
+        "type": "object", "properties": {"minutes": {"type": "number"}}}}}
+    registry = {"wait": Skill(lambda minutes: f"{minutes!r}", False, schema)}
+    llm = ScriptedLLM([_call("wait", {"minutes": "2"}), _text("ok")])
+
+    Agent(llm, confirm=lambda a: True, registry=registry).handle("wait")
+
+    assert llm.requests[1][0][-1]["content"] == "2.0"
+
+
+def test_empty_reply_becomes_done():
+    agent = Agent(ScriptedLLM([_text("")]), confirm=lambda a: True, registry={})
+    assert agent.handle("hi") == "Done, sir."

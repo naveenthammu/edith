@@ -7,6 +7,18 @@ from skills import REGISTRY, Skill
 
 log = logging.getLogger(__name__)
 
+_PY_TYPES = {"integer": int, "number": float, "string": str}
+
+
+def _coerce(args: dict, schema: dict) -> dict:
+    """The local model often sends numbers as strings; convert using the skill's schema."""
+    props = schema.get("function", {}).get("parameters", {}).get("properties", {})
+    out = {}
+    for key, value in args.items():
+        cast = _PY_TYPES.get(props.get(key, {}).get("type"))
+        out[key] = cast(value) if cast and not isinstance(value, bool) else value
+    return out
+
 SYSTEM_PROMPT = (
     "You are EDITH, a voice assistant running on the user's Windows PC. Address the user as sir. "
     "Your replies are spoken aloud: answer in one to three short sentences, with no markdown, lists or emojis. "
@@ -49,15 +61,17 @@ class Agent:
             reply = self.llm.chat(self._messages(), tools)
             self.history.append(reply.message)
             if not reply.tool_calls:
-                return (reply.text or "").strip()
+                return (reply.text or "").strip() or "Done, sir."
             for call in reply.tool_calls:
                 calls += 1
                 # Every tool call needs a tool message, even past the cap.
                 result = self._run(call) if calls <= self.max_tool_calls else "error: tool call limit reached"
                 self.history.append({"role": "tool", "tool_call_id": call["id"], "content": result})
         reply = self.llm.chat(self._messages(), [])  # no tools: force a spoken answer
-        self.history.append(reply.message)
-        return (reply.text or "").strip()
+        text = (reply.text or "").strip() or "Done, sir."
+        # Store plain text only: a stray tool_calls message here would have no tool results and break later requests.
+        self.history.append({"role": "assistant", "content": text})
+        return text
 
     def _run(self, call: dict) -> str:
         entry = self.registry.get(call["name"])
@@ -66,7 +80,7 @@ class Agent:
         if entry.confirm and not self.confirm(call["name"].replace("_", " ")):
             return "cancelled by user"
         try:
-            return str(entry.func(**call["arguments"]))
+            return str(entry.func(**_coerce(call["arguments"], entry.schema)))
         except Exception as e:
             log.exception("skill %s failed", call["name"])
             return f"error: {e}"

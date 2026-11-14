@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -67,7 +68,7 @@ def to_local_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
             extra = "\n\n" + LOCAL_TOOL_PROMPT.format(tools=tool_lines) if tools else ""
             out.append({"role": "system", "content": m["content"] + extra})
         elif role == "tool":
-            out.append({"role": "user", "content": f"Tool result: {m['content']}"})
+            out.append({"role": "user", "content": f"Tool result: {m['content'][:500]}"})
         elif role == "assistant" and m.get("tool_calls"):
             fn = m["tool_calls"][0]["function"]
             out.append(
@@ -80,7 +81,7 @@ def to_local_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
 
 REMOTE_TIMEOUT = 8.0  # seconds
 RETRY_REMOTE_AFTER = 60.0  # seconds offline before trying FreeLLMAPI again
-REMOTE_ERRORS = (openai.APIConnectionError, openai.RateLimitError, openai.InternalServerError)
+REMOTE_ERRORS = (openai.APIError,)
 
 LOCAL_REPO = "Qwen/Qwen2.5-3B-Instruct-GGUF"
 LOCAL_FILE = "qwen2.5-3b-instruct-q4_k_m.gguf"
@@ -101,6 +102,7 @@ class LLM:
         self._local = None
         self._offline_until = 0.0
         self._announced = False
+        self._local_retry_at = 0.0
 
     def chat(self, messages: list[dict], tools: list[dict]) -> Reply:
         if self.remote is not None and self.clock() >= self._offline_until:
@@ -113,13 +115,19 @@ class LLM:
                 self._offline_until = self.clock() + RETRY_REMOTE_AFTER
                 if self.on_fallback and not self._announced:
                     self._announced = True
-                    self.on_fallback()
+                    try:
+                        self.on_fallback()
+                    except Exception:
+                        log.exception("fallback announcement failed")
+        if self._local is None and self.clock() < self._local_retry_at:
+            raise LLMUnavailable("local model unavailable")
         try:
             if self._local is None:
                 self._local = self.local_factory()
             return parse_local_reply(self._local.complete(to_local_messages(messages, tools)))
         except Exception as e:
             log.exception("local model failed")
+            self._local_retry_at = self.clock() + RETRY_REMOTE_AFTER
             raise LLMUnavailable(str(e)) from e
 
     def _remote_chat(self, messages: list[dict], tools: list[dict]) -> Reply:
@@ -132,7 +140,11 @@ class LLM:
             {"id": tc.id, "name": tc.function.name, "arguments": _loads_args(tc.function.arguments)}
             for tc in msg.tool_calls or []
         ]
-        return Reply(msg.content, calls, msg.model_dump(exclude_none=True))
+        dumped = msg.model_dump(exclude_none=True)
+        message = {"role": "assistant", "content": msg.content}
+        if dumped.get("tool_calls"):
+            message["tool_calls"] = dumped["tool_calls"]
+        return Reply(msg.content, calls, message)
 
 
 class LocalModel:
@@ -141,17 +153,31 @@ class LocalModel:
     def __init__(self, model_path: Path):
         from llama_cpp import Llama
 
-        self.llm = Llama(model_path=str(model_path), n_ctx=4096, n_threads=4, verbose=False)
+        self.llm = Llama(model_path=str(model_path), n_ctx=8192, n_threads=4, verbose=False)
 
     def complete(self, messages: list[dict]) -> str:
         out = self.llm.create_chat_completion(messages=messages, max_tokens=256, temperature=0.3)
         return out["choices"][0]["message"]["content"] or ""
 
 
-def download_local_model(models_dir: Path) -> Path:
+def download_local_model(models_dir: Path, local_only: bool = False) -> Path:
     from huggingface_hub import hf_hub_download
 
-    return Path(hf_hub_download(repo_id=LOCAL_REPO, filename=LOCAL_FILE, local_dir=models_dir))
+    return Path(
+        hf_hub_download(repo_id=LOCAL_REPO, filename=LOCAL_FILE, local_dir=models_dir, local_files_only=local_only)
+    )
+
+
+def prefetch_local_model(models_dir: Path) -> None:
+    """Download the local model in the background at startup so a later fallback never waits on the network."""
+
+    def run():
+        try:
+            download_local_model(models_dir)
+        except Exception:
+            log.exception("local model download failed")
+
+    threading.Thread(target=run, daemon=True, name="model-download").start()
 
 
 def build_llm(cfg, on_fallback: Callable | None = None) -> LLM:
@@ -161,6 +187,6 @@ def build_llm(cfg, on_fallback: Callable | None = None) -> LLM:
     return LLM(
         remote,
         cfg.model,
-        local_factory=lambda: LocalModel(download_local_model(cfg.models_dir)),
+        local_factory=lambda: LocalModel(download_local_model(cfg.models_dir, local_only=True)),
         on_fallback=on_fallback,
     )

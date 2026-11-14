@@ -183,3 +183,63 @@ def test_both_backends_down_raises_unavailable():
     llm = LLM(FakeRemote(error=_connection_error()), "auto", local_factory=broken_local)
     with pytest.raises(LLMUnavailable):
         llm.chat(MSGS, TOOLS)
+
+
+def test_any_api_error_falls_back_to_local():
+    err = openai.BadRequestError(
+        "bad", response=httpx2.Response(400, request=httpx2.Request("POST", "http://x")), body=None
+    )
+    llm = LLM(FakeRemote(error=err), "auto", local_factory=lambda: FakeLocal("local text"))
+    assert llm.chat(MSGS, TOOLS).text == "local text"
+
+
+def test_remote_message_drops_unknown_top_level_fields():
+    remote = FakeRemote(
+        _completion(
+            {
+                "role": "assistant",
+                "content": None,
+                "reasoning": "secret thoughts",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "battery", "arguments": "{}"},
+                        "thought_signature": "abc",
+                    }
+                ],
+            }
+        )
+    )
+    reply = LLM(remote, "auto", local_factory=FakeLocal).chat(MSGS, TOOLS)
+    assert "reasoning" not in reply.message
+    assert reply.message["tool_calls"][0]["thought_signature"] == "abc"
+    assert "content" in reply.message and reply.message["content"] is None
+
+
+def test_broken_local_factory_not_retried_during_cooldown():
+    calls = []
+
+    def broken():
+        calls.append(1)
+        raise RuntimeError("no model")
+
+    llm = LLM(None, "auto", local_factory=broken, clock=lambda: 0.0)
+    for _ in range(2):
+        with pytest.raises(LLMUnavailable):
+            llm.chat(MSGS, TOOLS)
+    assert len(calls) == 1
+
+
+def test_to_local_messages_truncates_tool_results():
+    out = to_local_messages([{"role": "tool", "tool_call_id": "c", "content": "x" * 2000}], [])
+    assert out[0]["content"] == "Tool result: " + "x" * 500
+
+
+def test_fallback_announcement_failure_does_not_break_chat():
+    def boom():
+        raise RuntimeError("tts down")
+
+    llm = LLM(FakeRemote(error=_connection_error()), "auto", local_factory=lambda: FakeLocal("still here"),
+              on_fallback=boom)
+    assert llm.chat(MSGS, TOOLS).text == "still here"
