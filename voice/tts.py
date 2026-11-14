@@ -28,10 +28,11 @@ class Speaker:
     def _run(self) -> None:
         try:
             import comtypes  # installed with pyttsx3 on Windows; SAPI needs COM initialised on this thread
-            import pyttsx3
+            import comtypes.client
 
             comtypes.CoInitialize()
-            engine = pyttsx3.init()
+            # SAPI directly: pyttsx3's runAndWait goes silent after the first sentence on this PC.
+            voice = comtypes.client.CreateObject("SAPI.SpVoice")
         except Exception:
             log.exception("text-to-speech unavailable")
             self._failed = True
@@ -42,8 +43,7 @@ class Speaker:
             self.utterances += 1
             self.speaking.set()
             try:
-                engine.say(text)
-                engine.runAndWait()
+                voice.Speak(text)  # synchronous: returns when the sentence has finished playing
             except Exception:
                 log.exception("speech failed")
             finally:
