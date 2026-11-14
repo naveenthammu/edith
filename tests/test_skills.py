@@ -42,3 +42,22 @@ def test_volume_rejects_unknown_action(monkeypatch):
     media.volume("up", 3)
     media.volume("mute")
     assert pressed == [("volumeup", 3), ("volumemute", 1)]
+
+
+from types import SimpleNamespace
+
+from skills import REGISTRY, system
+
+
+def test_dangerous_system_skills_need_confirmation():
+    for name in ("lock_pc", "sleep_pc", "shutdown_pc"):
+        assert REGISTRY[name].confirm is True
+    for name in ("cancel_shutdown", "screenshot", "battery"):
+        assert REGISTRY[name].confirm is False
+
+
+def test_battery_reports_status(monkeypatch):
+    monkeypatch.setattr(system.psutil, "sensors_battery", lambda: SimpleNamespace(percent=81.6, power_plugged=True))
+    assert system.battery() == "Battery at 82 percent, charging."
+    monkeypatch.setattr(system.psutil, "sensors_battery", lambda: None)
+    assert system.battery() == "No battery found on this PC."
