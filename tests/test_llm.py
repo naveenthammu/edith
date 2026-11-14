@@ -64,3 +64,122 @@ def test_to_local_messages_converts_tool_turns():
     assert out[1] == {"role": "user", "content": "weather in Pune"}
     assert json.loads(out[2]["content"]) == {"tool": "get_weather", "args": {"city": "Pune"}}
     assert out[3] == {"role": "user", "content": "Tool result: Pune: 25 degrees"}
+
+
+import httpx2
+import openai
+import pytest
+from openai.types.chat import ChatCompletion
+
+from brain.llm import LLM, LLMUnavailable
+
+
+def _completion(message: dict) -> ChatCompletion:
+    return ChatCompletion.model_validate(
+        {
+            "id": "x",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "auto",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": message}],
+        }
+    )
+
+
+class FakeRemote:
+    """Mimics openai.OpenAI().chat.completions.create."""
+
+    def __init__(self, result=None, error=None):
+        self.result, self.error, self.calls = result, error, 0
+        self.chat = self
+        self.completions = self
+
+    def create(self, **kwargs):
+        self.calls += 1
+        if self.error:
+            raise self.error
+        return self.result
+
+
+class FakeLocal:
+    def __init__(self, text="local answer"):
+        self.text, self.seen = text, None
+
+    def complete(self, messages):
+        self.seen = messages
+        return self.text
+
+
+def _connection_error():
+    return openai.APIConnectionError(request=httpx2.Request("POST", "http://127.0.0.1:31415/v1/chat/completions"))
+
+
+MSGS = [{"role": "system", "content": "s"}, {"role": "user", "content": "hi"}]
+
+
+def test_remote_tool_call_is_parsed_and_message_kept():
+    remote = FakeRemote(
+        _completion(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "open_website", "arguments": '{"url": "https://youtube.com"}'},
+                        "thought_signature": "abc",
+                    }
+                ],
+            }
+        )
+    )
+    llm = LLM(remote, "auto", local_factory=FakeLocal)
+
+    reply = llm.chat(MSGS, TOOLS)
+
+    assert reply.tool_calls == [{"id": "call_1", "name": "open_website", "arguments": {"url": "https://youtube.com"}}]
+    # Extra provider fields must survive so the next request is accepted.
+    assert reply.message["tool_calls"][0]["thought_signature"] == "abc"
+
+
+def test_remote_failure_falls_back_to_local_and_announces_once():
+    announced = []
+    local = FakeLocal("offline hello")
+    remote = FakeRemote(error=_connection_error())
+    llm = LLM(remote, "auto", local_factory=lambda: local, on_fallback=lambda: announced.append(1), clock=lambda: 0.0)
+
+    first = llm.chat(MSGS, TOOLS)
+    second = llm.chat(MSGS, TOOLS)
+
+    assert first.text == "offline hello"
+    assert second.text == "offline hello"
+    assert announced == [1]
+    assert remote.calls == 1  # second request skipped remote: still inside the 60s offline window
+    assert "get_weather" in local.seen[0]["content"]
+
+
+def test_remote_retried_after_offline_window():
+    now = [0.0]
+    remote = FakeRemote(error=_connection_error())
+    llm = LLM(remote, "auto", local_factory=FakeLocal, clock=lambda: now[0])
+
+    llm.chat(MSGS, TOOLS)
+    now[0] = 61.0
+    llm.chat(MSGS, TOOLS)
+
+    assert remote.calls == 2
+
+
+def test_no_remote_uses_local_only():
+    llm = LLM(None, "auto", local_factory=lambda: FakeLocal('{"tool": "battery", "args": {}}'))
+    assert llm.chat(MSGS, TOOLS).tool_calls[0]["name"] == "battery"
+
+
+def test_both_backends_down_raises_unavailable():
+    def broken_local():
+        raise RuntimeError("model file missing")
+
+    llm = LLM(FakeRemote(error=_connection_error()), "auto", local_factory=broken_local)
+    with pytest.raises(LLMUnavailable):
+        llm.chat(MSGS, TOOLS)
