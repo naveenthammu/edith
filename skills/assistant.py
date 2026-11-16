@@ -5,6 +5,18 @@ llm = None
 
 
 @skill()
+def get_brain_mode() -> str:
+    """Tell whether EDITH is answering online (cloud model) or offline (local model on this PC)."""
+    if llm is None:
+        return "error: brain not available"
+    if llm.remote is None or llm.force_offline:
+        return "Offline mode: using the local model on this PC."
+    if llm.clock() < llm._offline_until:
+        return "Temporarily offline: the online model failed, retrying it within a minute."
+    return "Online mode."
+
+
+@skill()
 def set_brain_mode(mode: str) -> str:
     """Switch EDITH's brain. mode 'offline' uses only the local model on this PC; 'online' goes back to Claude."""
     mode = mode.strip().lower()

@@ -14,7 +14,7 @@ PRE_ROLL_CHUNKS = 3  # keep 0.3 s before speech starts
 # Biases Whisper toward EDITH's words: short commands like "notepad" were heard as "not bad".
 VOCABULARY = ("Edith, open notepad, calculator, VS Code, Chrome, YouTube, WhatsApp, Instagram, Gmail, "
               "weather, Wikipedia, volume up, volume down, mute, screenshot, battery, remind me, note, "
-              "lock the PC, shutdown, switch to offline mode, switch to online mode.")
+              "lock the PC, shutdown, switch to offline mode, switch to online mode, Naukri profile.")
 
 
 def clean_transcript(segments, wake_word: str = "edith") -> str:

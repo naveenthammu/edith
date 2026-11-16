@@ -146,3 +146,13 @@ def test_brain_mode_switch(monkeypatch):
     assert llm.force_offline is False and llm._offline_until == 0.0
 
     assert assistant.set_brain_mode("sideways").startswith("error")
+
+
+def test_get_brain_mode(monkeypatch):
+    llm = LLM(object(), local_factory=lambda: None, clock=lambda: 10.0)
+    monkeypatch.setattr(assistant, "llm", llm)
+    assert assistant.get_brain_mode() == "Online mode."
+    llm._offline_until = 60.0
+    assert assistant.get_brain_mode().startswith("Temporarily offline")
+    llm.force_offline = True
+    assert assistant.get_brain_mode().startswith("Offline mode")
