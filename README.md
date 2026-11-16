@@ -57,6 +57,26 @@ Things to try:
 
 Say "log in to Naukri" once: a browser window opens and you log in yourself. EDITH keeps the session in `data/browser/naukri` and never sees your password. After that, EDITH refreshes your profile once a day by re-saving your resume headline, which marks the profile as updated so recruiters see it higher. A Chrome window opens for about 15 seconds while it does this. If Naukri blocks the automated visit, EDITH tells you and you refresh it by hand that day.
 
+### Gmail, Google Calendar and Google Tasks
+
+EDITH reads your unread mail, today's events and your to-do lists, sends email and adds events (both after you say "yes"), and adds tasks, for example to a "Bucket list". Google Keep has no API for personal accounts, so EDITH uses Google Tasks for notes and lists.
+
+One-time setup, about 5 minutes:
+
+1. Go to https://console.cloud.google.com, create a project, and under **APIs & Services > Library** enable **Gmail API**, **Google Calendar API** and **Google Tasks API**.
+2. Under **APIs & Services > OAuth consent screen**, choose **External**, fill in the app name, and add your own Gmail address as a **test user**.
+3. Under **APIs & Services > Credentials**, create an **OAuth client ID** of type **Desktop app** and download its JSON.
+4. Save that file as `data/google/credentials.json`.
+5. Say "connect Google". Your browser asks you to approve access. Google warns that the app is unverified, because it's your own app: choose **Continue**.
+
+The sign-in token stays in `data/google/token.json`. Delete that file to disconnect.
+
+### WhatsApp messages and other notifications
+
+Say "read my WhatsApp messages" or "any new notifications?". EDITH reads the notifications Windows shows, so it sees the sender and the preview of each WhatsApp message, email or Teams chat that is still in the notification center. Turn on **Settings > Privacy & security > Notifications > Let apps access your notifications** once. This works on Windows only.
+
+Mail, messages and notifications that EDITH reads are sent to the online model to answer you, like everything else you say.
+
 ## Settings (`.env`)
 
 - `ANTHROPIC_API_KEY`: the Claude key. Empty means offline only.

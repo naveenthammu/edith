@@ -49,4 +49,5 @@ def tool_schemas() -> list[dict]:
 
 def load_all() -> None:
     # Importing each module runs its @skill decorators.
-    from skills import assistant, computer, info, media, memory, naukri, productivity, screen, system, web  # noqa: F401
+    from skills import (assistant, computer, google_apps, info, media, memory, naukri,  # noqa: F401
+                        notifications, productivity, screen, system, web)

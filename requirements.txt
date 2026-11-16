@@ -17,3 +17,10 @@ pywebview>=6.0
 send2trash>=1.8
 playwright>=1.40
 pillow>=10.0
+google-api-python-client>=2.100
+google-auth-oauthlib>=1.2
+winrt-Windows.UI.Notifications.Management>=2.0; sys_platform == "win32"
+winrt-Windows.UI.Notifications>=2.0; sys_platform == "win32"
+winrt-Windows.ApplicationModel>=2.0; sys_platform == "win32"
+winrt-Windows.Foundation>=2.0; sys_platform == "win32"
+winrt-Windows.Foundation.Collections>=2.0; sys_platform == "win32"
