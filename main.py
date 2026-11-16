@@ -124,7 +124,7 @@ def run(overlay=None) -> None:
     revive = lambda: ensure_proxy(cfg.base_url, os.getenv("FREELLMAPI_APP"))  # load_config already read .env
     revive()
     prefetch_local_model(cfg.models_dir)  # background download so offline fallback is ready later
-    llm = build_llm(cfg, on_fallback=lambda: speaker.say("Switching to offline mode, sir. The first answer may take a minute."), revive=revive)
+    llm = build_llm(cfg, on_fallback=lambda: speaker.say("Switching to offline mode, sir."), revive=revive)
     assistant.llm = llm
     memory = Memory(cfg.data_dir / "memory.txt")
     memory_skill.memory = memory
@@ -136,7 +136,7 @@ def run(overlay=None) -> None:
         return is_yes(answer)
 
     agent = Agent(llm, confirm, memory=memory)
-    if llm.remote is None and llm.local_ready():  # offline-only: get the slow first load out of the way now
+    if llm.local_ready():  # load the offline model in the background so a fallback answers fast, not after minutes
         llm.warm_up(agent._messages(), skills.tool_schemas())
     speaker.say("Edith 3 point o is online. Say Edith when you need me.")
 

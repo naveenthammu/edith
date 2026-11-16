@@ -305,6 +305,8 @@ class LocalModel:
 def download_local_model(models_dir: Path, local_only: bool = False) -> Path:
     from huggingface_hub import hf_hub_download
 
+    if (models_dir / LOCAL_FILE).exists():  # already downloaded: skip the Hub check and its console warning
+        return models_dir / LOCAL_FILE
     return Path(
         hf_hub_download(repo_id=LOCAL_REPO, filename=LOCAL_FILE, local_dir=models_dir, local_files_only=local_only)
     )
