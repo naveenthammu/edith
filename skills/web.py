@@ -1,10 +1,12 @@
 import re
+import shutil
 import subprocess
 import time
 import webbrowser
 from urllib.parse import quote_plus, urlparse
 
 from skills import skill
+from skills.computer import OS
 
 APPS = {
     "notepad": "notepad.exe",
@@ -22,7 +24,21 @@ APPS = {
     "visual studio code": "code",
     "chrome": "chrome",
     "edge": "msedge",
+    "whatsapp": "whatsapp:",
+    "terminal": "wt",
 }
+
+
+# macOS app bundle names for `open -a`, and Linux launch commands, for the same spoken names.
+MAC_APPS = {"notepad": "TextEdit", "calculator": "Calculator", "calc": "Calculator", "chrome": "Google Chrome",
+            "vs code": "Visual Studio Code", "vscode": "Visual Studio Code", "visual studio code": "Visual Studio Code",
+            "settings": "System Settings", "file explorer": "Finder", "explorer": "Finder", "terminal": "Terminal",
+            "edge": "Microsoft Edge", "whatsapp": "WhatsApp"}
+LINUX_APPS = {"notepad": "gnome-text-editor", "calculator": "gnome-calculator", "calc": "gnome-calculator",
+              "chrome": "google-chrome", "vs code": "code", "vscode": "code", "visual studio code": "code",
+              "settings": "gnome-control-center", "file explorer": "nautilus", "explorer": "nautilus",
+              "terminal": "gnome-terminal", "edge": "microsoft-edge"}
+PLAIN_NAME = re.compile(r"[A-Za-z0-9 .+-]{1,40}")  # app names only: never paths, switches or shell syntax
 
 
 def resolve_app(name: str) -> str | None:
@@ -55,14 +71,16 @@ def search_google(query: str) -> str:
 
 @skill()
 def open_app(name: str) -> str:
-    """Open a Windows application by name, for example notepad, calculator, vs code, chrome or settings."""
+    """Open an application by name, for example notepad, calculator, vs code, chrome, whatsapp or settings."""
+    if OS != "Windows":
+        return _open_app_unix(name)
     target = resolve_app(name)
     if target:
         # Safe: target comes from the fixed APPS map, never from user text.
         subprocess.Popen(f'start "" {target}', shell=True)
         return f"Opened {name}"
     # Windows Search runs command lines, so only plain app names may be typed.
-    if not re.fullmatch(r"[A-Za-z0-9 .+-]{1,40}", name.strip()):
+    if not PLAIN_NAME.fullmatch(name.strip()):
         return "error: unknown app name"
     import pyautogui
 
@@ -72,3 +90,17 @@ def open_app(name: str) -> str:
     time.sleep(0.6)
     pyautogui.press("enter")
     return f"Searched the Start menu for {name}"
+
+
+def _open_app_unix(name: str) -> str:
+    key = name.strip().lower()
+    if not PLAIN_NAME.fullmatch(name.strip()):
+        return "error: unknown app name"
+    if OS == "Darwin":  # list args, no shell: the name can't run anything but an app
+        result = subprocess.run(["open", "-a", MAC_APPS.get(key, name.strip())], capture_output=True, text=True)
+        return f"Opened {name}" if result.returncode == 0 else f"error: no app called {name}"
+    cmd = LINUX_APPS.get(key) or shutil.which(key.replace(" ", "-")) or shutil.which(key.replace(" ", ""))
+    if not cmd or not shutil.which(cmd):
+        return f"error: no app called {name}"
+    subprocess.Popen([cmd], start_new_session=True)
+    return f"Opened {name}"

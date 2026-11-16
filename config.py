@@ -10,9 +10,11 @@ ROOT = Path(__file__).resolve().parent
 
 @dataclass(frozen=True)
 class Config:
-    base_url: str | None
+    anthropic_key: str | None  # Claude; tried first
+    claude_model: str
+    base_url: str | None  # FreeLLMAPI (free tiers); tried when Claude is missing or fails
     api_key: str | None
-    model: str
+    model: str  # FreeLLMAPI model name
     mic_threshold: float
     wake_word: str
     data_dir: Path
@@ -25,6 +27,8 @@ def load_config(root: Path = ROOT) -> Config:
     models_dir = data_dir / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
     return Config(
+        anthropic_key=os.getenv("ANTHROPIC_API_KEY") or None,
+        claude_model=os.getenv("CLAUDE_MODEL") or "claude-opus-5-5",
         base_url=os.getenv("BASE_URL") or None,
         api_key=os.getenv("API_KEY") or None,
         model=os.getenv("MODEL") or "auto",

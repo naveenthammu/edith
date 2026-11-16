@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import threading
@@ -6,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+import anthropic
 import openai
 
 log = logging.getLogger(__name__)
@@ -81,25 +83,142 @@ def to_local_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
     return out
 
 
-REMOTE_TIMEOUT = 8.0  # seconds
-RETRY_REMOTE_AFTER = 60.0  # seconds offline before trying FreeLLMAPI again
-REMOTE_ERRORS = (openai.APIError,)
+REMOTE_TIMEOUT = 30.0  # seconds; Claude thinks before tool calls, so allow more than a plain chat reply
+RETRY_REMOTE_AFTER = 60.0  # seconds offline before trying Claude again
+REMOTE_ERRORS = (anthropic.APIError, openai.APIError)  # incl. offline, rate limits, no credits
 
-LOCAL_REPO = "Qwen/Qwen2.5-3B-Instruct-GGUF"
-LOCAL_FILE = "qwen2.5-3b-instruct-q4_k_m.gguf"
+LOCAL_REPO = "bartowski/Qwen2.5-7B-Instruct-GGUF"
+LOCAL_FILE = "Qwen2.5-7B-Instruct-Q4_K_M.gguf"  # ~4.7 GB; the strongest model that runs usably on a 16 GB CPU-only PC
+
+
+def to_claude_tool(tool: dict) -> dict:
+    fn = tool["function"]
+    return {"name": fn["name"], "description": fn["description"], "input_schema": fn["parameters"]}
+
+
+def to_claude_messages(messages: list[dict]) -> tuple[str, list[dict]]:
+    """Convert the agent's OpenAI-style history to Claude's (system, messages)."""
+    system, out = [], []
+
+    def add(role: str, blocks: list[dict]) -> None:
+        if out and out[-1]["role"] == role:  # tool results after one reply must share one user turn
+            out[-1]["content"].extend(blocks)
+        else:
+            out.append({"role": role, "content": blocks})
+
+    for m in messages:
+        role = m["role"]
+        if role == "system":
+            system.append(m["content"])
+        elif role == "tool":
+            add("user", [{"type": "tool_result", "tool_use_id": m["tool_call_id"], "content": m["content"] or "(empty)"}])
+        elif role == "assistant" and m.get("claude_content"):
+            add("assistant", list(m["claude_content"]))  # replayed unchanged: thinking blocks must stay intact
+        elif role == "assistant":
+            blocks = [{"type": "text", "text": m["content"]}] if m.get("content") else []
+            for tc in m.get("tool_calls") or []:  # written by the local model while offline
+                blocks.append({"type": "tool_use", "id": tc["id"], "name": tc["function"]["name"],
+                               "input": _loads_args(tc["function"]["arguments"])})
+            add("assistant", blocks or [{"type": "text", "text": "..."}])
+        else:
+            add("user", [{"type": "text", "text": m.get("content") or "..."}])
+    return "\n\n".join(system), out
+
+
+class ClaudeRemote:
+    """Claude through the official SDK; speaks the agent's OpenAI-style message format at the edges."""
+
+    def __init__(self, client, model: str):
+        self.client, self.model = client, model
+
+    def chat(self, messages: list[dict], tools: list[dict]) -> "Reply":
+        system, msgs = to_claude_messages(messages)
+        extra = {"tools": [to_claude_tool(t) for t in tools]} if tools else {}
+        resp = self.client.beta.messages.create(
+            model=self.model, max_tokens=4096, system=system, messages=msgs,
+            output_config={"effort": "low"},  # spoken one-liners: low effort keeps replies fast
+            betas=["server-side-fallback-2026-07-01"], fallbacks="default",  # a declined request is retried on a fallback model
+            timeout=REMOTE_TIMEOUT, **extra,
+        )
+        content = [b.model_dump(exclude_none=True) for b in resp.content]
+        text = " ".join(b["text"] for b in content if b["type"] == "text").strip() or None
+        if resp.stop_reason == "refusal":
+            text = "I can't help with that, sir."
+        calls = [{"id": b["id"], "name": b["name"], "arguments": b["input"]} for b in content if b["type"] == "tool_use"]
+        message = {"role": "assistant", "content": text, "claude_content": content}
+        if calls:
+            message["tool_calls"] = [{"id": c["id"], "type": "function",
+                                      "function": {"name": c["name"], "arguments": json.dumps(c["arguments"])}}
+                                     for c in calls]
+        return Reply(text, calls, message)
+
+    def describe_image(self, png: bytes, question: str) -> str:
+        """Answer a question about a screenshot (Claude vision)."""
+        resp = self.client.messages.create(
+            model=self.model, max_tokens=1024, output_config={"effort": "low"}, timeout=REMOTE_TIMEOUT,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png",
+                                             "data": base64.standard_b64encode(png).decode()}},
+                {"type": "text", "text": question + " Answer in one to three short spoken sentences."},
+            ]}],
+        )
+        return " ".join(b.text for b in resp.content if b.type == "text").strip()
+
+
+FREE_TIMEOUT = 30.0  # tool-calling routes via FreeLLMAPI measured ~9s; 8s made every such call fall back offline
+
+
+class OpenAIRemote:
+    """An OpenAI-compatible endpoint such as FreeLLMAPI (free tiers of several providers)."""
+
+    def __init__(self, client, model: str):
+        self.client, self.model = client, model
+
+    def chat(self, messages: list[dict], tools: list[dict]) -> "Reply":
+        # Claude's raw content is only for Claude; other providers may reject unknown fields.
+        clean = [{k: v for k, v in m.items() if k != "claude_content"} for m in messages]
+        extra = {"tools": tools} if tools else {}
+        resp = self.client.chat.completions.create(model=self.model, messages=clean, timeout=FREE_TIMEOUT, **extra)
+        msg = resp.choices[0].message
+        calls = [{"id": tc.id, "name": tc.function.name, "arguments": _loads_args(tc.function.arguments)}
+                 for tc in msg.tool_calls or []]
+        dumped = msg.model_dump(exclude_none=True)
+        message = {"role": "assistant", "content": msg.content}
+        if dumped.get("tool_calls"):
+            message["tool_calls"] = dumped["tool_calls"]
+        return Reply(msg.content, calls, message)
+
+
+class RemoteChain:
+    """Try each online model in order (Claude, then FreeLLMAPI); the caller falls back to local if all fail."""
+
+    def __init__(self, remotes: list):
+        self.remotes = remotes
+
+    def chat(self, messages: list[dict], tools: list[dict]) -> "Reply":
+        for i, remote in enumerate(self.remotes):
+            try:
+                return remote.chat(messages, tools)
+            except REMOTE_ERRORS as e:
+                if i == len(self.remotes) - 1:
+                    raise
+                log.warning("%s failed, trying the next online model: %s", type(remote).__name__, e)
+
+    def vision(self):
+        """The first online model that can see images, or None."""
+        return next((r for r in self.remotes if hasattr(r, "describe_image")), None)
 
 
 class LLMUnavailable(Exception):
-    """Neither FreeLLMAPI nor the local model could answer."""
+    """Neither Claude nor the local model could answer."""
 
 
 class LLM:
-    def __init__(self, remote, model: str, local_factory: Callable, on_fallback: Callable | None = None,
+    def __init__(self, remote, local_factory: Callable, on_fallback: Callable | None = None,
                  clock: Callable[[], float] = time.monotonic, local_ready: Callable[[], bool] = lambda: True):
-        self.remote = remote
+        self.remote = remote  # anything with chat(messages, tools) -> Reply, e.g. ClaudeRemote
         self.local_ready = local_ready  # True once the local model file is on disk
         self.force_offline = False  # set by the user's "switch to offline mode"
-        self.model = model
         self.local_factory = local_factory
         self.on_fallback = on_fallback
         self.clock = clock
@@ -111,11 +230,11 @@ class LLM:
     def chat(self, messages: list[dict], tools: list[dict]) -> Reply:
         if self.remote is not None and not self.force_offline and self.clock() >= self._offline_until:
             try:
-                reply = self._remote_chat(messages, tools)
+                reply = self.remote.chat(messages, tools)
                 self._announced = False
                 return reply
             except REMOTE_ERRORS as e:
-                log.warning("FreeLLMAPI failed, using local model: %s", e)
+                log.warning("Claude failed, using local model: %s", e)
                 self._offline_until = self.clock() + RETRY_REMOTE_AFTER
                 if self.on_fallback and not self._announced:
                     self._announced = True
@@ -134,39 +253,42 @@ class LLM:
             self._local_retry_at = self.clock() + RETRY_REMOTE_AFTER
             raise LLMUnavailable(str(e)) from e
 
+    def warm_up(self, messages: list[dict], tools: list[dict]) -> None:
+        """Load the local model and cache the long tool prompt in the background (~4 min on a laptop CPU),
+        so the first spoken question doesn't wait for it."""
+
+        def run():
+            try:
+                if self._local is None:
+                    self._local = self.local_factory()
+                self._local.complete(to_local_messages(messages + [{"role": "user", "content": "hello"}], tools))
+            except Exception:
+                log.exception("local model warm-up failed")
+
+        threading.Thread(target=run, daemon=True, name="local-warmup").start()
+
     def go_online(self) -> None:
-        """Use FreeLLMAPI again on the next request."""
+        """Use Claude again on the next request."""
         self.force_offline = False
         self._offline_until = 0.0
         self._announced = False
 
-    def _remote_chat(self, messages: list[dict], tools: list[dict]) -> Reply:
-        extra = {"tools": tools} if tools else {}
-        resp = self.remote.chat.completions.create(
-            model=self.model, messages=messages, timeout=REMOTE_TIMEOUT, **extra
-        )
-        msg = resp.choices[0].message
-        calls = [
-            {"id": tc.id, "name": tc.function.name, "arguments": _loads_args(tc.function.arguments)}
-            for tc in msg.tool_calls or []
-        ]
-        dumped = msg.model_dump(exclude_none=True)
-        message = {"role": "assistant", "content": msg.content}
-        if dumped.get("tool_calls"):
-            message["tool_calls"] = dumped["tool_calls"]
-        return Reply(msg.content, calls, message)
-
 
 class LocalModel:
-    """Qwen2.5-3B on CPU through llama-cpp-python."""
+    """Qwen2.5-7B on CPU through llama-cpp-python."""
 
     def __init__(self, model_path: Path):
+        import psutil
         from llama_cpp import Llama
 
-        self.llm = Llama(model_path=str(model_path), n_ctx=8192, n_threads=4, verbose=False)
+        # One thread per physical core: hyper-threads slow llama.cpp down rather than speed it up.
+        self.llm = Llama(model_path=str(model_path), n_ctx=8192, n_threads=psutil.cpu_count(logical=False) or 4,
+                         verbose=False)
+        self._lock = threading.Lock()  # llama.cpp isn't thread-safe; the startup warm-up runs on its own thread
 
     def complete(self, messages: list[dict]) -> str:
-        out = self.llm.create_chat_completion(messages=messages, max_tokens=256, temperature=0.3)
+        with self._lock:
+            out = self.llm.create_chat_completion(messages=messages, max_tokens=256, temperature=0.3)
         return out["choices"][0]["message"]["content"] or ""
 
 
@@ -191,12 +313,14 @@ def prefetch_local_model(models_dir: Path) -> None:
 
 
 def build_llm(cfg, on_fallback: Callable | None = None) -> LLM:
-    remote = None
+    remotes = []
+    if cfg.anthropic_key:
+        remotes.append(ClaudeRemote(anthropic.Anthropic(api_key=cfg.anthropic_key, max_retries=0), cfg.claude_model))
     if cfg.base_url and cfg.api_key:
-        remote = openai.OpenAI(base_url=cfg.base_url.rstrip("/") + "/v1", api_key=cfg.api_key, max_retries=0)
+        remotes.append(OpenAIRemote(openai.OpenAI(base_url=cfg.base_url.rstrip("/") + "/v1", api_key=cfg.api_key,
+                                                  max_retries=0), cfg.model))
     return LLM(
-        remote,
-        cfg.model,
+        RemoteChain(remotes) if remotes else None,
         local_factory=lambda: LocalModel(download_local_model(cfg.models_dir, local_only=True)),
         on_fallback=on_fallback,
         local_ready=lambda: (cfg.models_dir / LOCAL_FILE).exists(),

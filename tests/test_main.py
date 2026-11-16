@@ -1,4 +1,27 @@
-from main import converse, is_goodbye, is_yes
+import pytest
+
+import main
+from main import converse, ensure_proxy, is_goodbye, is_yes
+
+
+def test_ensure_proxy_starts_app_when_port_closed(monkeypatch, tmp_path):
+    app = tmp_path / "FreeLLMAPI.exe"
+    app.write_text("")
+    started, state = [], {"open": False}
+    monkeypatch.setattr(main, "port_open", lambda url: state["open"])
+    monkeypatch.setenv("ELECTRON_RUN_AS_NODE", "1")
+    monkeypatch.setattr("subprocess.Popen", lambda cmd, env: started.append((cmd, env)) or state.update(open=True))
+    assert ensure_proxy("http://127.0.0.1:31415", str(app), sleep=lambda s: None) is True
+    assert started[0][0] == [str(app)] and "ELECTRON_RUN_AS_NODE" not in started[0][1]
+
+
+def test_ensure_proxy_skips_when_running_or_unset(monkeypatch):
+    monkeypatch.setattr("subprocess.Popen", lambda cmd, env: pytest.fail("should not start"))
+    monkeypatch.setattr(main, "port_open", lambda url: True)
+    assert ensure_proxy("http://127.0.0.1:31415", "x.exe") is True
+    monkeypatch.setattr(main, "port_open", lambda url: False)
+    assert ensure_proxy("http://127.0.0.1:31415", None) is False
+    assert ensure_proxy(None, "x.exe") is False
 
 
 def test_is_goodbye():

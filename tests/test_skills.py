@@ -60,7 +60,7 @@ def test_battery_reports_status(monkeypatch):
     monkeypatch.setattr(system.psutil, "sensors_battery", lambda: SimpleNamespace(percent=81.6, power_plugged=True))
     assert system.battery() == "Battery at 82 percent, charging."
     monkeypatch.setattr(system.psutil, "sensors_battery", lambda: None)
-    assert system.battery() == "No battery found on this PC."
+    assert system.battery() == "No battery found on this computer."
 
 
 import threading
@@ -131,7 +131,7 @@ from skills import assistant
 
 def test_brain_mode_switch(monkeypatch):
     ready = [False]
-    llm = LLM(object(), "m", local_factory=lambda: None, local_ready=lambda: ready[0])
+    llm = LLM(object(), local_factory=lambda: None, local_ready=lambda: ready[0])
     monkeypatch.setattr(assistant, "llm", llm)
 
     assert "still downloading" in assistant.set_brain_mode("offline")

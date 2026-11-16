@@ -6,7 +6,7 @@ llm = None
 
 @skill()
 def set_brain_mode(mode: str) -> str:
-    """Switch EDITH's brain. mode 'offline' uses only the local model on this PC; 'online' goes back to FreeLLMAPI."""
+    """Switch EDITH's brain. mode 'offline' uses only the local model on this PC; 'online' goes back to Claude."""
     mode = mode.strip().lower()
     if llm is None:
         return "error: brain not available"

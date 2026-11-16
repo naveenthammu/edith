@@ -1,10 +1,12 @@
 import re
+import subprocess
 import webbrowser
 from urllib.parse import quote_plus
 
 import requests
 
 from skills import skill
+from skills.computer import OS
 
 VOLUME_KEYS = {"up": "volumeup", "down": "volumedown", "mute": "volumemute"}
 
@@ -39,5 +41,20 @@ def volume(action: str, steps: int = 5) -> str:
     key = VOLUME_KEYS.get(action.strip().lower())
     if key is None:
         return "error: action must be up, down or mute"
-    _press(key, 1 if key == "volumemute" else max(1, min(steps, 50)))
+    steps = 1 if key == "volumemute" else max(1, min(steps, 50))
+    if OS == "Windows":
+        _press(key, steps)
+    else:
+        subprocess.run(_volume_cmd(key, steps * 2), check=False)
     return f"Volume {action}"
+
+
+def _volume_cmd(key: str, percent: int) -> list[str]:
+    if OS == "Darwin":
+        script = ("set volume output muted (not output muted of (get volume settings))" if key == "volumemute" else
+                  f"set volume output volume ((output volume of (get volume settings)) "
+                  f"{'+' if key == 'volumeup' else '-'} {percent})")
+        return ["osascript", "-e", script]
+    if key == "volumemute":
+        return ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle"]
+    return ["pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{'+' if key == 'volumeup' else '-'}{percent}%"]

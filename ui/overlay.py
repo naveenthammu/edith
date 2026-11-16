@@ -1,6 +1,7 @@
 import ctypes
 import json
 import logging
+import platform
 from pathlib import Path
 
 log = logging.getLogger("edith.ui")
@@ -53,7 +54,8 @@ class Overlay:
             shadow=False,
             background_color="#%02x%02x%02x" % CARD,
         )
-        self.window.events.loaded += self._style_card
+        if platform.system() == "Windows":  # opacity/corner tweaks go through WinForms; elsewhere pywebview's defaults stand
+            self.window.events.loaded += self._style_card
 
     def _style_card(self) -> None:
         from System import Action

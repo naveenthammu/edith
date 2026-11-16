@@ -1,3 +1,4 @@
+anthropic>=2.8
 openai>=1.40
 python-dotenv>=1.0
 vosk>=0.3.45
@@ -13,3 +14,6 @@ pytest>=8.0
 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 llama-cpp-python>=0.3
 pywebview>=6.0
+send2trash>=1.8
+playwright>=1.40
+pillow>=10.0

@@ -1,4 +1,5 @@
 import logging
+import platform
 from datetime import datetime
 from typing import Callable
 
@@ -20,24 +21,48 @@ def _coerce(args: dict, schema: dict) -> dict:
     return out
 
 SYSTEM_PROMPT = (
-    "You are EDITH, a voice assistant running on the user's Windows PC. Address the user as sir. "
+    "You are EDITH, a voice assistant running on the user's {os} computer. Address the user as sir. "
     "Your replies are spoken aloud: answer in one to three short sentences, with no markdown, lists or emojis. "
-    "Use the tools to act on the PC or fetch information. Current date and time: {now}."
+    "Think like a thoughtful human assistant: work out what the user actually means, even from casual or "
+    "half-finished phrasing; for anything with several steps, plan it and do the steps in order with the tools; "
+    "when a request is genuinely unclear, ask one short question instead of guessing. "
+    "Use the tools to act on the computer or fetch information, and never say you did something a tool didn't confirm. "
+    "Current date and time: {now}."
 )
+MEMORY_PROMPT = "\n\nWhat you have learned about the user (use it, don't recite it):\n{facts}"
+LEARN_PROMPT = (
+    "Before we finish: list any new lasting facts worth remembering about me from this conversation - "
+    "my name, people in my life, preferences, habits, or corrections to how you should behave. "
+    "One short third-person line each, e.g. 'User prefers Celsius.'. Skip temporary things and anything "
+    "you were already told above. If there is nothing new, reply NONE."
+)
+OS_NAMES = {"Windows": "Windows", "Darwin": "macOS", "Linux": "Linux"}
 
 
 class Agent:
     def __init__(self, llm, confirm: Callable[[str], bool], registry: dict[str, Skill] = REGISTRY,
-                 max_tool_calls: int = 3, max_turns: int = 10):
+                 max_tool_calls: int = 6, max_turns: int = 10, memory=None):
         self.llm = llm
         self.confirm = confirm  # asks the user out loud, returns True only on "yes"
         self.registry = registry
+        self.memory = memory  # brain.memory.Memory, or None
         self.max_tool_calls = max_tool_calls
         self.max_turns = max_turns
         self.history: list[dict] = []
 
     def reset(self) -> None:
         self.history = []
+
+    def learn(self) -> list[str]:
+        """Ask the brain what this conversation taught it about the user and store it: EDITH's day-to-day learning."""
+        if self.memory is None or not any(m["role"] == "user" for m in self.history):
+            return []
+        reply = self.llm.chat(self._messages() + [{"role": "user", "content": LEARN_PROMPT}], [])
+        lines = [line.strip(" -*•\t") for line in (reply.text or "").splitlines()]
+        learned = [f for f in lines if f and f.upper().rstrip(".") != "NONE" and self.memory.add(f)]
+        if learned:
+            log.info("learned: %s", learned)
+        return learned
 
     def handle(self, text: str) -> str:
         start = len(self.history)
@@ -86,7 +111,11 @@ class Agent:
             return f"error: {e}"
 
     def _messages(self) -> list[dict]:
-        system = SYSTEM_PROMPT.format(now=datetime.now().strftime("%A %d %B %Y, %I:%M %p"))
+        system = SYSTEM_PROMPT.format(os=OS_NAMES.get(platform.system(), platform.system()),
+                                      now=datetime.now().strftime("%A %d %B %Y, %I:%M %p"))
+        facts = self.memory.facts() if self.memory else []
+        if facts:
+            system += MEMORY_PROMPT.format(facts="\n".join(f"- {f}" for f in facts))
         return [{"role": "system", "content": system}] + self.history
 
     def _trim(self) -> None:

@@ -1,4 +1,5 @@
 import logging
+import platform
 import queue
 import threading
 
@@ -27,12 +28,7 @@ class Speaker:
 
     def _run(self) -> None:
         try:
-            import comtypes  # installed with pyttsx3 on Windows; SAPI needs COM initialised on this thread
-            import comtypes.client
-
-            comtypes.CoInitialize()
-            # SAPI directly: pyttsx3's runAndWait goes silent after the first sentence on this PC.
-            voice = comtypes.client.CreateObject("SAPI.SpVoice")
+            speak = _speech_engine()
         except Exception:
             log.exception("text-to-speech unavailable")
             self._failed = True
@@ -43,9 +39,29 @@ class Speaker:
             self.utterances += 1
             self.speaking.set()
             try:
-                voice.Speak(text)  # synchronous: returns when the sentence has finished playing
+                speak(text)  # synchronous: returns when the sentence has finished playing
             except Exception:
                 log.exception("speech failed")
             finally:
                 self.speaking.clear()
                 done.set()
+
+
+def _speech_engine():
+    """Return speak(text) for this OS; must be called on the thread that will speak."""
+    if platform.system() == "Windows":
+        import comtypes  # installed with pyttsx3 on Windows; SAPI needs COM initialised on this thread
+        import comtypes.client
+
+        comtypes.CoInitialize()
+        # SAPI directly: pyttsx3's runAndWait goes silent after the first sentence on Windows.
+        return comtypes.client.CreateObject("SAPI.SpVoice").Speak
+    import pyttsx3  # NSSpeechSynthesizer on macOS, espeak-ng on Linux
+
+    engine = pyttsx3.init()
+
+    def speak(text: str) -> None:
+        engine.say(text)
+        engine.runAndWait()
+
+    return speak
