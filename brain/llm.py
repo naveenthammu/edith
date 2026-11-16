@@ -87,8 +87,13 @@ REMOTE_TIMEOUT = 30.0  # seconds; Claude thinks before tool calls, so allow more
 RETRY_REMOTE_AFTER = 60.0  # seconds offline before trying Claude again
 REMOTE_ERRORS = (anthropic.APIError, openai.APIError)  # incl. offline, rate limits, no credits
 
-LOCAL_REPO = "bartowski/Qwen2.5-7B-Instruct-GGUF"
-LOCAL_FILE = "Qwen2.5-7B-Instruct-Q4_K_M.gguf"  # ~4.7 GB; the strongest model that runs usably on a 16 GB CPU-only PC
+LOCAL_REPO = "bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF"
+# ~2.3 GB file, ~4.1 GB RAM. Benchmarked once on EDITH's 54-tool prompt (i5-1145G7, CPU only, 8 requests):
+# expected tool on 7/8 at ~5 s per model call (the 8th read the time from the prompt, also a correct answer).
+# Qwen2.5-7B got 1/8 (it said "Opening Notepad..." without calling the tool); Qwen2.5-3B got 7/8 (it called
+# a tool that doesn't exist). A q8 KV cache saved 0.8 GB RAM but nearly doubled latency on CPU.
+# A request that uses a tool needs two model calls: measured 18-28 s end to end.
+LOCAL_FILE = "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
 
 def to_claude_tool(tool: dict) -> dict:
@@ -264,7 +269,7 @@ class LLM:
             raise LLMUnavailable(str(e)) from e
 
     def warm_up(self, messages: list[dict], tools: list[dict]) -> None:
-        """Load the local model and cache the long tool prompt in the background (~4 min on a laptop CPU),
+        """Load the local model and cache the long tool prompt in the background (~2 min on a laptop CPU),
         so the first spoken question doesn't wait for it."""
 
         def run():
@@ -285,7 +290,7 @@ class LLM:
 
 
 class LocalModel:
-    """Qwen2.5-7B on CPU through llama-cpp-python."""
+    """The local model (LOCAL_FILE) on CPU through llama-cpp-python."""
 
     def __init__(self, model_path: Path):
         import psutil

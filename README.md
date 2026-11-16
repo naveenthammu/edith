@@ -6,7 +6,7 @@ A voice assistant for Windows, macOS and Linux. Say "Edith", then talk normally.
 
 - Wake word: Vosk, offline.
 - Speech-to-text: faster-whisper `small.en`, offline. Tuned for accented English.
-- Brain: Claude (`claude-opus-5-5`) when online. Without internet or an API key, EDITH uses Qwen2.5-7B running locally with llama-cpp-python. Replies from the offline model take about 10–20 seconds on a laptop CPU.
+- Brain: Claude (`claude-opus-5-5`) when online. Without internet or an API key, EDITH uses Qwen3-4B-Instruct running locally on the CPU with llama-cpp-python (no GPU needed, about 4 GB of RAM). It loads in the background at startup, which takes about 2 minutes. After that, a plain offline answer takes about 5 seconds on a laptop CPU, and a request that uses a tool takes about 20–30 seconds, because the model runs twice: once to pick the tool and once to speak the result.
 - Memory: after each conversation, Claude notes lasting facts about you (names, preferences, corrections) in `data/memory.txt`. Every later conversation starts with them. It's a plain text file you can read and edit.
 - Voice: Windows SAPI on Windows, pyttsx3 elsewhere (macOS speech, espeak-ng on Linux).
 - Overlay: a small galaxy card in the top-right corner, drawn by pywebview.
