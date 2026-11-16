@@ -7,7 +7,7 @@ from pathlib import Path
 log = logging.getLogger("edith.ui")
 
 HTML = Path(__file__).with_name("orb.html")
-WIDTH, HEIGHT, MARGIN = 280, 280, 16  # collapsed card; grows when the history panel opens
+WIDTH, HEIGHT, MARGIN = 220, 220, 16  # collapsed card; grows when the history panel opens
 OPACITY = 0.9   # whole-window alpha: the desktop shows faintly through the card
 CARD = (4, 4, 6)  # must match --card in orb.html
 
@@ -20,6 +20,9 @@ class _Api:
 
     def close(self) -> None:
         self._overlay.hide()
+
+    def minimize(self) -> None:
+        self._overlay.window.minimize()  # to the taskbar; the wake word restores it
 
     def fit(self, height) -> None:
         self._overlay.window.resize(WIDTH, max(HEIGHT, min(int(height), 700)))
@@ -80,6 +83,7 @@ class Overlay:
             log.exception("overlay script failed")
 
     def show(self) -> None:
+        self.window.restore()  # undo a minimize; no-op otherwise
         self.window.show()
         self._js("orb.wake()")
 

@@ -14,8 +14,10 @@
   #shell { width: 100%; opacity: 0; transform: scale(.9); transform-origin: top right;
     transition: opacity .35s ease, transform .35s cubic-bezier(.2,.9,.3,1.2); }
   body.awake #shell { opacity: 1; transform: none; }
-  #stage { position: relative; height: 260px; display: flex; justify-content: center; }
-  canvas { display: block; width: 260px; height: 260px; }
+  #stage { position: relative; height: 200px; display: flex; justify-content: center; }
+  /* the galaxy is the drag handle: pywebview moves the frameless window on .pywebview-drag-region */
+  canvas { display: block; width: 200px; height: 200px; cursor: grab; }
+  canvas:active { cursor: grabbing; }
   #bar { position: absolute; top: 8px; right: 8px; display: flex; gap: 5px; }
   #bar button { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line);
     background: var(--glass); color: var(--text); font-size: 10px; line-height: 1; cursor: pointer;
@@ -43,9 +45,10 @@
 <body>
 <div id="shell">
   <div id="stage">
-    <canvas id="c" aria-hidden="true"></canvas>
+    <canvas id="c" class="pywebview-drag-region" aria-hidden="true" title="Drag to move"></canvas>
     <div id="bar">
       <button id="histBtn" aria-label="Show history" aria-expanded="false" aria-controls="panel">▾</button>
+      <button id="minBtn" aria-label="Minimize">–</button>
       <button id="closeBtn" aria-label="Close">✕</button>
     </div>
   </div>
@@ -53,7 +56,7 @@
 </div>
 <script>
 const cv = document.getElementById('c'), g = cv.getContext('2d');
-const W = 260, H = 260, F = 320;         // focal length: whole galaxy fits even at the lowest camera tilt
+const W = 200, H = 200, F = 190;         // focal length: galaxy (radius 12 at distance 33) keeps ~25px margin
 const PX = F / 862;                      // scale for sizes tuned on the full-screen version
 (function () {
   const dpr = Math.min(devicePixelRatio || 1, 2);
@@ -305,6 +308,9 @@ histBtn.addEventListener('click', () => {
   histBtn.setAttribute('aria-label', open ? 'Hide history' : 'Show history');
   panel.scrollTop = panel.scrollHeight;
   fit();
+});
+document.getElementById('minBtn').addEventListener('click', () => {
+  if (window.pywebview) pywebview.api.minimize();
 });
 document.getElementById('closeBtn').addEventListener('click', () => {
   if (window.pywebview) pywebview.api.close(); else orb.sleep();

@@ -86,9 +86,11 @@ class Agent:
             reply = self.llm.chat(self._messages(), tools)
             self.history.append(reply.message)
             if not reply.tool_calls:
+                log.info("reply: %s", reply.text)
                 return (reply.text or "").strip() or "Done, sir."
             for call in reply.tool_calls:
                 calls += 1
+                log.info("tool: %s %s", call["name"], call["arguments"])
                 # Every tool call needs a tool message, even past the cap.
                 result = self._run(call) if calls <= self.max_tool_calls else "error: tool call limit reached"
                 self.history.append({"role": "tool", "tool_call_id": call["id"], "content": result})
