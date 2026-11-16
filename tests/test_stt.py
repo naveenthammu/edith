@@ -4,7 +4,42 @@ import numpy as np
 
 from types import SimpleNamespace
 
-from voice.stt import clean_transcript, collect_speech, heard_self
+from voice.stt import Listener, clean_transcript, collect_speech, heard_self
+
+
+class FakeMic:
+    def __init__(self, buffered):
+        self.buffered, self.dropped = list(buffered), False
+
+    def drop(self):
+        self.buffered, self.dropped = [], True
+
+    def chunks(self):
+        yield from self.buffered
+        while True:
+            yield np.zeros(1600, dtype=np.float32)
+
+
+def fake_listener(mic):
+    lst = object.__new__(Listener)  # skip loading Whisper
+    lst.threshold, lst.speaker, lst.mic = 0.01, None, mic
+    lst.model = SimpleNamespace(transcribe=lambda audio, **kw: (
+        [SimpleNamespace(text=f" {len(audio)} samples", no_speech_prob=0.0, avg_logprob=-0.2, compression_ratio=1.0)],
+        None))
+    return lst
+
+
+def test_listen_keep_buffer_uses_words_said_right_after_wake_word():
+    speech = [np.full(1600, 0.2, dtype=np.float32)] * 5
+    mic = FakeMic(speech)
+    assert fake_listener(mic).listen(start_timeout=0.6, keep_buffer=True) != ""
+    assert mic.dropped is False
+
+
+def test_listen_drops_old_audio_by_default():
+    mic = FakeMic([np.full(1600, 0.2, dtype=np.float32)] * 5)
+    assert fake_listener(mic).listen(start_timeout=0.6) is None  # old speech dropped, then only silence
+    assert mic.dropped is True
 
 
 def seg(text, no_speech=0.1, logprob=-0.3, ratio=1.2):

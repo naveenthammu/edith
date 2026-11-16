@@ -50,19 +50,23 @@ def ensure_proxy(base_url: str | None, app: str | None, wait: float = 30.0, slee
     return False
 
 
-def converse(agent, listener, speaker, on_turn=lambda who, text: None) -> None:
+def converse(agent, listener, speaker, on_turn=lambda who, text: None, first: str | None = None) -> None:
     """Talk without the wake word until silence, goodbye, or a microphone error.
 
     on_turn(who, text) sees each exchange ("you" / "edith"), e.g. for the overlay history.
+    first is a request already heard together with the wake word ("Edith, what's the time").
     """
     empty = 0
     while True:
-        try:
-            text = listener.listen(start_timeout=10.0)
-        except Exception:
-            log.exception("listening failed")
-            speaker.say("I can't hear you, sir. Please check the microphone.")
-            return
+        if first is not None:
+            text, first = first, None
+        else:
+            try:
+                text = listener.listen(start_timeout=10.0)
+            except Exception:
+                log.exception("listening failed")
+                speaker.say("I can't hear you, sir. Please check the microphone.")
+                return
         if text is None:
             return
         if not text:
@@ -108,7 +112,7 @@ def run(overlay=None) -> None:
     from brain.memory import Memory
     from config import load_config, setup_logging
     from skills import assistant, memory as memory_skill, naukri, productivity
-    from voice.stt import Listener
+    from voice.stt import Listener, Mic
     from voice.tts import Speaker
     from voice.wake import WakeWord, ensure_vosk_model
 
@@ -119,7 +123,8 @@ def run(overlay=None) -> None:
 
     skills.load_all()
     productivity.announce = lambda text: speaker.say(text, wait=False)
-    listener = Listener(cfg.models_dir, cfg.mic_threshold, speaker=speaker)
+    mic = Mic()
+    listener = Listener(cfg.models_dir, cfg.mic_threshold, speaker=speaker, mic=mic)
     wake = WakeWord(ensure_vosk_model(cfg.models_dir), cfg.wake_word)
     revive = lambda: ensure_proxy(cfg.base_url, os.getenv("FREELLMAPI_APP"))  # load_config already read .env
     revive()
@@ -143,7 +148,9 @@ def run(overlay=None) -> None:
 
     while True:
         try:
-            wake.wait()
+            wake.wait(mic)
+            # "Edith, what's the time" in one breath: take the rest of the sentence straight away
+            first = listener.listen(start_timeout=0.6, keep_buffer=True)
         except Exception:
             log.exception("wake word failed")
             speaker.say("I can't hear you, sir. Please check the microphone.")
@@ -151,8 +158,9 @@ def run(overlay=None) -> None:
             continue
         if overlay:
             overlay.show()
-        speaker.say("Yes sir?")
-        converse(agent, listener, speaker, overlay.add if overlay else lambda who, text: None)
+        if not first:
+            speaker.say("Yes sir?")
+        converse(agent, listener, speaker, overlay.add if overlay else lambda who, text: None, first=first or None)
         if llm.remote and not llm.force_offline:  # the offline model is too weak to judge what's worth keeping
             try:
                 agent.learn()

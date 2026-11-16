@@ -62,6 +62,12 @@ def test_converse_until_goodbye():
     assert speaker.said == ["you said hello", "I didn't catch that, sir.", "Goodbye sir."]
 
 
+def test_converse_answers_request_heard_with_wake_word_first():
+    speaker = FakeSpeaker()
+    converse(EchoAgent(), FakeListener(["bye"]), speaker, first="what's the time")
+    assert speaker.said == ["you said what's the time", "Goodbye sir."]
+
+
 def test_converse_returns_on_silence():
     speaker = FakeSpeaker()
     converse(EchoAgent(), FakeListener([None]), speaker)

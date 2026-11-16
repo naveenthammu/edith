@@ -53,15 +53,37 @@ def collect_speech(chunks: Iterator[np.ndarray], chunk_sec: float, threshold: fl
     return np.concatenate(frames) if frames else None
 
 
-def mic_chunks(chunk_sec: float = CHUNK_SEC) -> Iterator[np.ndarray]:
-    import sounddevice as sd
+ECHO_TAIL = 0.15  # seconds of EDITH's own voice still reaching the mic after the speaker goes quiet
 
-    q: queue.Queue = queue.Queue()
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32",
-                        blocksize=int(SAMPLE_RATE * chunk_sec), callback=lambda data, *_: q.put(data[:, 0].copy())):
+
+class Mic:
+    """One microphone stream for the whole session, shared by the wake word and the listener.
+
+    Reopening the mic for every utterance lost the words said right after "Edith": in the log,
+    "Edith, what's the time now" in one breath came out as "Clip of time now".
+    """
+
+    def __init__(self, chunk_sec: float = CHUNK_SEC):
+        import sounddevice as sd
+
+        self.q: queue.Queue = queue.Queue()
+        self.stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32",
+                                     blocksize=int(SAMPLE_RATE * chunk_sec),
+                                     callback=lambda data, *_: self.q.put(data[:, 0].copy()))
+        self.stream.start()
+
+    def drop(self) -> None:
+        """Forget audio already captured, such as EDITH's own voice."""
         while True:
             try:
-                yield q.get(timeout=0.5)  # wake up so Ctrl+C works on Windows
+                self.q.get_nowait()
+            except queue.Empty:
+                return
+
+    def chunks(self) -> Iterator[np.ndarray]:
+        while True:
+            try:
+                yield self.q.get(timeout=0.5)  # wake up so Ctrl+C works on Windows
             except queue.Empty:
                 continue
 
@@ -72,27 +94,35 @@ def heard_self(before: int, speaker) -> bool:
 
 
 class Listener:
-    def __init__(self, models_dir: Path, threshold: float = 0.01, model_name: str = "small.en", speaker=None):
+    def __init__(self, models_dir: Path, threshold: float = 0.01, model_name: str = "small.en", speaker=None,
+                 mic: "Mic | None" = None):
         from faster_whisper import WhisperModel
 
         self.threshold = threshold
         self.speaker = speaker
+        self.mic = mic or Mic()
         self.model = WhisperModel(model_name, device="cpu", compute_type="int8",
                                   download_root=str(models_dir / "whisper"))
 
-    def listen(self, start_timeout: float = 10.0, silence: float = 1.0, max_len: float = 15.0) -> str | None:
-        """Return the spoken text, "" if speech was unclear, or None if nobody spoke before start_timeout."""
+    def listen(self, start_timeout: float = 10.0, silence: float = 1.0, max_len: float = 15.0,
+               keep_buffer: bool = False) -> str | None:
+        """Return the spoken text, "" if speech was unclear, or None if nobody spoke before start_timeout.
+
+        keep_buffer=True starts from audio the mic already holds: the rest of a sentence that began with "Edith".
+        """
         while True:
-            while self.speaker and self.speaker.speaking.is_set():
-                time.sleep(0.05)
+            if self.speaker and self.speaker.speaking.is_set():
+                while self.speaker.speaking.is_set():
+                    time.sleep(0.05)
+                time.sleep(ECHO_TAIL)
+                keep_buffer = False  # the buffer now holds EDITH's own voice
+            if not keep_buffer:
+                self.mic.drop()
             before = self.speaker.utterances if self.speaker else 0
-            chunks = mic_chunks()
-            try:
-                audio = collect_speech(chunks, CHUNK_SEC, self.threshold, start_timeout, silence, max_len)
-            finally:
-                chunks.close()  # closes the microphone stream
+            audio = collect_speech(self.mic.chunks(), CHUNK_SEC, self.threshold, start_timeout, silence, max_len)
             if not (self.speaker and heard_self(before, self.speaker)):
                 break
+            keep_buffer = False
         if audio is None:
             return None
         segments, _ = self.model.transcribe(audio, language="en", beam_size=5, vad_filter=True,

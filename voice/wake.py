@@ -1,6 +1,5 @@
 import json
 import logging
-import queue
 import shutil
 import urllib.request
 import zipfile
@@ -42,23 +41,18 @@ class WakeWord:
         self.model = Model(str(model_path))
         self.word = word
 
-    def wait(self) -> None:
-        """Block until the wake word is heard."""
-        import sounddevice as sd
+    def wait(self, mic) -> None:
+        """Block until the wake word is heard on mic (voice.stt.Mic). Audio after it stays in the mic for the listener."""
+        import numpy as np
         from vosk import KaldiRecognizer
 
         rec = KaldiRecognizer(self.model, SAMPLE_RATE, json.dumps([self.word, "[unk]"]))
-        q: queue.Queue = queue.Queue()
-        with sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=4000, dtype="int16", channels=1,
-                               callback=lambda data, *_: q.put(bytes(data))):
-            while True:
-                try:
-                    data = q.get(timeout=0.5)  # wake up so Ctrl+C works on Windows
-                except queue.Empty:
-                    continue
-                if rec.AcceptWaveform(data):
-                    text = json.loads(rec.Result())["text"]
-                else:
-                    text = json.loads(rec.PartialResult())["partial"]
-                if heard(text, self.word):
-                    return
+        mic.drop()  # older audio may hold EDITH saying her own name
+        for chunk in mic.chunks():
+            data = (np.clip(chunk, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
+            if rec.AcceptWaveform(data):
+                text = json.loads(rec.Result())["text"]
+            else:
+                text = json.loads(rec.PartialResult())["partial"]
+            if heard(text, self.word):
+                return
