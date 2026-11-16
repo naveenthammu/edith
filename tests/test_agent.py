@@ -1,4 +1,4 @@
-from brain.agent import Agent
+from brain.agent import Agent, spoken
 from brain.llm import LLMUnavailable, Reply
 from skills import Skill
 
@@ -47,6 +47,36 @@ def test_tool_call_runs_skill_and_sends_result_back():
     assert agent.handle("battery?") == "Battery is at 80 percent."
     last_messages = llm.requests[1][0]
     assert last_messages[-1] == {"role": "tool", "tool_call_id": "c1", "content": "80 percent"}
+
+
+class OfflineLLM(ScriptedLLM):
+    def offline(self):
+        return True
+
+
+def test_offline_speaks_tool_result_without_second_model_call():
+    llm = OfflineLLM([_call("battery")])
+    agent = Agent(llm, confirm=lambda a: True,
+                  registry=_registry(battery=(lambda: "Battery at 80 percent, charging.", False)))
+    assert agent.handle("battery?") == "Battery at 80 percent, charging."
+    assert len(llm.requests) == 1
+    assert agent.history[-1] == {"role": "assistant", "content": "Battery at 80 percent, charging."}
+
+
+def test_offline_multi_step_request_goes_back_to_the_model():
+    llm = OfflineLLM([_call("open_app"), _call("type_text", call_id="c2"), _text("Done, sir.")])
+    agent = Agent(llm, confirm=lambda a: True,
+                  registry=_registry(open_app=(lambda: "Opened notepad", False), type_text=(lambda: "Typed.", False)))
+    assert agent.handle("open notepad and type hi") == "Done, sir."
+    assert len(llm.requests) == 3
+
+
+def test_spoken_tool_results():
+    assert spoken("error: Google isn't connected yet.") == "Sorry sir, Google isn't connected yet."
+    assert spoken("cancelled by user") == "Okay, cancelled, sir."
+    assert spoken("Opened notepad") == "Opened notepad."
+    assert spoken("2 notifications, newest first:\nWhatsApp: Mom - Call me") \
+        == "2 notifications, newest first: WhatsApp: Mom - Call me."
 
 
 def test_skill_exception_becomes_error_string():

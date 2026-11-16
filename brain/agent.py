@@ -1,5 +1,6 @@
 import logging
 import platform
+import re
 from datetime import datetime
 from typing import Callable
 
@@ -37,6 +38,20 @@ LEARN_PROMPT = (
     "you were already told above. If there is nothing new, reply NONE."
 )
 OS_NAMES = {"Windows": "Windows", "Darwin": "macOS", "Linux": "Linux"}
+
+
+# "open notepad and type hi": offline, these still go back to the model for the next step.
+MULTI_STEP = re.compile(r"\b(and|then|after that|also)\b", re.IGNORECASE)
+
+
+def spoken(result: str) -> str:
+    """A tool result read out as EDITH's answer; offline mode skips the model's second, slow pass."""
+    if result == "cancelled by user":
+        return "Okay, cancelled, sir."
+    if result.startswith("error: "):
+        result = "Sorry sir, " + result[len("error: "):]
+    lines = [line.strip() for line in result.splitlines() if line.strip()]
+    return " ".join(line if line[-1] in ".!?:" else line + "." for line in lines) or "Done, sir."
 
 
 class Agent:
@@ -88,12 +103,22 @@ class Agent:
             if not reply.tool_calls:
                 log.info("reply: %s", reply.text)
                 return (reply.text or "").strip() or "Done, sir."
+            results = []
             for call in reply.tool_calls:
                 calls += 1
                 log.info("tool: %s %s", call["name"], call["arguments"])
                 # Every tool call needs a tool message, even past the cap.
                 result = self._run(call) if calls <= self.max_tool_calls else "error: tool call limit reached"
                 self.history.append({"role": "tool", "tool_call_id": call["id"], "content": result})
+                results.append(result)
+            offline = getattr(self.llm, "offline", None)
+            asked = next((m["content"] for m in reversed(self.history) if m["role"] == "user"), "")
+            if offline and offline() and not MULTI_STEP.search(asked):
+                # The local model needs 5-20 s a call on a laptop CPU: speak the result instead of asking it again.
+                text = " ".join(spoken(r) for r in results)
+                log.info("reply: %s", text)
+                self.history.append({"role": "assistant", "content": text})
+                return text
         reply = self.llm.chat(self._messages(), [])  # no tools: force a spoken answer
         text = (reply.text or "").strip() or "Done, sir."
         # Store plain text only: a stray tool_calls message here would have no tool results and break later requests.

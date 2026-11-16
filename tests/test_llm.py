@@ -67,8 +67,24 @@ def test_to_local_messages_converts_tool_turns():
     assert out[3] == {"role": "user", "content": "Tool result: Pune: 25 degrees"}
 
 
+def test_to_local_messages_moves_clock_to_newest_message():
+    system = ("You are EDITH. Current date and time: Monday 16 November 2026, 04:35 PM."
+              "\n\nWhat you have learned:\n- User is Navin")
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "Hello sir."}, {"role": "user", "content": "what time is it"}]
+    out = to_local_messages(messages, TOOLS)
+    assert out[0]["content"].endswith("You are EDITH.\n\nWhat you have learned:\n- User is Navin")
+    assert out[1]["content"] == "hi"
+    assert out[-1]["content"] == "what time is it\n\n(Current date and time: Monday 16 November 2026, 04:35 PM.)"
+    a_minute_later = [{"role": "system", "content": system.replace("04:35", "04:36")}] + messages[1:]
+    assert to_local_messages(a_minute_later, TOOLS)[:3] == out[:3]  # cached prompt start survives the clock
+
+
+import threading
+
 import httpx2
 import anthropic
+import numpy as np
 import pytest
 from types import SimpleNamespace
 
@@ -293,6 +309,59 @@ def test_openai_remote_strips_claude_content():
     history = MSGS + [{"role": "assistant", "content": "x", "claude_content": [{"type": "text", "text": "x"}]}]
     assert OpenAIRemote(Client(), "auto").chat(history, []).text == "hi"
     assert all("claude_content" not in m for m in seen["messages"])
+
+
+def test_local_replies_are_marked_and_offline_is_reported():
+    llm = LLM(None, local_factory=lambda: FakeLocal("hi"))
+    assert llm.offline() is True
+    assert llm.chat(MSGS, []).local is True
+    online = LLM(FakeRemote(reply=Reply("x")), local_factory=FakeLocal)
+    assert online.offline() is False and online.chat(MSGS, []).local is False
+    online.force_offline = True
+    assert online.offline() is True
+
+
+class FakeLlama:
+    def __init__(self):
+        self.loaded, self.completions = None, 0
+
+    def create_chat_completion(self, **kw):
+        self.completions += 1
+        return {"choices": [{"message": {"content": "hi"}}]}
+
+    def save_state(self):
+        return SimpleNamespace(input_ids=np.arange(8, dtype=np.intc), n_tokens=5, seed=7, llama_state=b"kv-bytes")
+
+    def n_vocab(self):
+        return 10
+
+    def load_state(self, state):
+        self.loaded = state
+
+
+def _local_model(tmp_path):
+    from brain.llm import LocalModel
+
+    model = object.__new__(LocalModel)  # skip loading a real GGUF
+    model.path, model.llm, model._lock = tmp_path / "m.gguf", FakeLlama(), threading.Lock()
+    return model
+
+
+def test_local_model_keeps_processed_prompt_on_disk(tmp_path):
+    hello = [{"role": "user", "content": "hello"}]
+    first = _local_model(tmp_path)
+    first.warm(hello, "abc")
+    assert first.llm.completions == 1 and len(list(tmp_path.glob("m.abc-*.prompt"))) == 1
+
+    second = _local_model(tmp_path)
+    second.warm(hello, "abc")
+    assert second.llm.completions == 0  # loaded from disk, not processed again
+    assert second.llm.loaded.n_tokens == 5 and second.llm.loaded.llama_state == b"kv-bytes"
+
+    third = _local_model(tmp_path)
+    third.warm(hello, "new")  # tool list changed: processed again, stale file removed
+    assert third.llm.completions == 1
+    assert [p.name.split("-")[0] for p in tmp_path.glob("*.prompt")] == ["m.new"]
 
 
 def _flaky_client(error):

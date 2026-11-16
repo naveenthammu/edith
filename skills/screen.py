@@ -92,6 +92,38 @@ def close_all_apps() -> str:
     return f"Asked {count} window{'s' if count != 1 else ''} to close." if count else "Nothing was open."
 
 
+def focus_window(app: str, wait: float = 3.0) -> bool:
+    """Bring the first window whose title or app name contains `app` to the front; False if none appears
+    within `wait` seconds (an app that was just opened can take a moment to show its window)."""
+    needle = app.strip().lower()
+    for _ in range(max(1, int(wait / 0.3))):
+        if OS == "Windows":
+            w = next((w for w in _win_windows() if needle in w.title.lower()), None)
+            if w is not None:
+                try:
+                    if w.isMinimized:
+                        w.restore()
+                    w.activate()
+                except Exception:
+                    pass  # Windows sometimes refuses focus changes; typing then still reaches the open window
+                break
+        elif OS == "Darwin":
+            name = next((n for n in _mac_apps() if needle in n.lower()), None)
+            if name is not None:
+                run(["osascript", "-e", f'tell application "{name}" to activate'])
+                break
+        else:
+            wid = next((wid for wid, title in _linux_windows() if needle in title.lower()), None)
+            if wid is not None:
+                run(["wmctrl", "-ia", wid])
+                break
+        time.sleep(0.3)
+    else:
+        return False
+    time.sleep(0.3)  # let the window take keyboard focus before anything is typed
+    return True
+
+
 def capture_window(app: str, path: Path) -> str | None:
     """Save a screenshot of the first window whose title or app name contains `app`; None if not found."""
     needle = app.strip().lower()

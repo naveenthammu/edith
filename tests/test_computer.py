@@ -7,6 +7,21 @@ import pytest
 from skills import REGISTRY, computer, media, system, web
 
 
+def test_type_text_focuses_the_named_app_or_refuses(monkeypatch):
+    from types import SimpleNamespace
+
+    from skills import screen
+
+    activated, typed = [], []
+    note = SimpleNamespace(title="Untitled - Notepad", isMinimized=False, activate=lambda: activated.append(1))
+    monkeypatch.setattr(screen, "OS", "Windows")
+    monkeypatch.setattr(screen, "_win_windows", lambda: [note])
+    monkeypatch.setattr(screen.time, "sleep", lambda s: None)
+    monkeypatch.setattr("pyautogui.write", lambda text, interval=0: typed.append(text))
+    assert computer.type_text("hi", app="notepad") == "Typed." and activated and typed == ["hi"]
+    assert computer.type_text("hi", app="word").startswith("error") and typed == ["hi"]  # nothing typed blind
+
+
 def test_every_os_has_power_commands():
     for os_name in ("Windows", "Darwin", "Linux"):
         assert os_name in system.SLEEP and os_name in system.SHUTDOWN

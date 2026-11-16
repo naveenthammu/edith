@@ -39,7 +39,8 @@ def format_notifications(toasts: list[tuple[str, list[str]]], app: str = "") -> 
     if not picked:
         return f"No {app} notifications." if want else "No notifications."
     lines = [f"{name}: {' - '.join(t for t in texts if t)}" for name, texts in picked[:MAX_SHOWN]]
-    return f"{len(picked)} notification(s), newest first:\n" + "\n".join(lines)
+    count = len(picked)
+    return f"{count} notification{'s' if count != 1 else ''}, newest first:\n" + "\n".join(lines)
 
 
 @skill()

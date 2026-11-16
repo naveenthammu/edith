@@ -30,7 +30,8 @@ def test_notifications_newest_first_and_filtered():
     toasts = [("WhatsApp", ["Mom", "Call me"]), ("Gmail", ["Amazon", "Shipped"]), ("WhatsApp", ["Ravi", "Hi"])]
     assert format_notifications(toasts).splitlines()[1] == "WhatsApp: Ravi - Hi"
     only = format_notifications(toasts, "whatsapp")
-    assert only.startswith("2 notification(s)") and "Gmail" not in only
+    assert only.startswith("2 notifications, newest first") and "Gmail" not in only
+    assert format_notifications(toasts, "gmail").startswith("1 notification, newest first")
     assert format_notifications(toasts, "teams") == "No teams notifications."
 
 

@@ -1,6 +1,8 @@
 import base64
+import hashlib
 import json
 import logging
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -23,6 +25,7 @@ class Reply:
     text: str | None
     tool_calls: list[dict] = field(default_factory=list)  # [{"id", "name", "arguments": dict}]
     message: dict = field(default_factory=dict)  # assistant message to append to history as-is
+    local: bool = False  # written by the offline model
 
 
 def _loads_args(raw: str | None) -> dict:
@@ -56,6 +59,12 @@ def parse_local_reply(text: str) -> Reply:
     return Reply(None, [call], message)
 
 
+# The agent's system prompt carries the clock, which changes every minute. llama.cpp only reuses the
+# unchanged start of a prompt, so locally the clock rides on the newest message instead: otherwise every
+# request re-read the persona and the whole conversation (43 s for "what is 2 plus 2" in a live run).
+_CLOCK = re.compile(r" ?Current date and time: [^\n]*?\.(?=\n|$)")
+
+
 def to_local_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
     """Rewrite OpenAI tool turns as plain chat turns the local model understands."""
     tool_lines = "\n".join(
@@ -63,14 +72,17 @@ def to_local_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
         f"args: {json.dumps(t['function']['parameters']['properties'])}"
         for t in tools
     )
-    out = []
+    out, clock = [], ""
     for m in messages:
         role = m["role"]
         if role == "system":
-            # Fixed tool list first: llama-cpp reuses a cached prompt prefix, and the persona text
-            # changes every minute (it holds the time), so putting it first forced a ~25 s re-read.
+            content = m["content"]
+            found = _CLOCK.search(content)
+            if found:
+                clock, content = found.group(0).strip(), content.replace(found.group(0), "", 1)
+            # Fixed tool list first, so the cached prompt prefix is as long as possible.
             tool_text = LOCAL_TOOL_PROMPT.format(tools=tool_lines) + "\n\n" if tools else ""
-            out.append({"role": "system", "content": tool_text + m["content"]})
+            out.append({"role": "system", "content": tool_text + content})
         elif role == "tool":
             out.append({"role": "user", "content": f"Tool result: {m['content'][:500]}"})
         elif role == "assistant" and m.get("tool_calls"):
@@ -80,6 +92,8 @@ def to_local_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
             )
         else:
             out.append({"role": role, "content": m.get("content") or ""})
+    if clock and out[-1]["role"] != "system":
+        out[-1] = {**out[-1], "content": f"{out[-1]['content']}\n\n({clock})"}
     return out
 
 
@@ -92,7 +106,7 @@ LOCAL_REPO = "bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF"
 # expected tool on 7/8 at ~5 s per model call (the 8th read the time from the prompt, also a correct answer).
 # Qwen2.5-7B got 1/8 (it said "Opening Notepad..." without calling the tool); Qwen2.5-3B got 7/8 (it called
 # a tool that doesn't exist). A q8 KV cache saved 0.8 GB RAM but nearly doubled latency on CPU.
-# A request that uses a tool needs two model calls: measured 18-28 s end to end.
+# End to end offline, with the saved prompt and spoken tool results: 4-13 s per request, 7 s warm-up.
 LOCAL_FILE = "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
 
@@ -262,21 +276,30 @@ class LLM:
         try:
             if self._local is None:
                 self._local = self.local_factory()
-            return parse_local_reply(self._local.complete(to_local_messages(messages, tools)))
+            reply = parse_local_reply(self._local.complete(to_local_messages(messages, tools)))
+            reply.local = True
+            return reply
         except Exception as e:
             log.exception("local model failed")
             self._local_retry_at = self.clock() + RETRY_REMOTE_AFTER
             raise LLMUnavailable(str(e)) from e
 
+    def offline(self) -> bool:
+        """True when the next chat() goes to the local model."""
+        return self.remote is None or self.force_offline or self.clock() < self._offline_until
+
     def warm_up(self, messages: list[dict], tools: list[dict]) -> None:
-        """Load the local model and cache the long tool prompt in the background (~2 min on a laptop CPU),
-        so the first spoken question doesn't wait for it."""
+        """Load the local model and its long tool prompt in the background, so the first offline question
+        doesn't wait for it. The processed prompt is kept on disk, keyed by the tool list."""
+        local_messages = to_local_messages(messages + [{"role": "user", "content": "hello"}], tools)
+        key = hashlib.sha1((LOCAL_TOOL_PROMPT + json.dumps(tools, sort_keys=True)).encode()).hexdigest()[:12]
 
         def run():
             try:
                 if self._local is None:
                     self._local = self.local_factory()
-                self._local.complete(to_local_messages(messages + [{"role": "user", "content": "hello"}], tools))
+                warm = getattr(self._local, "warm", None)
+                warm(local_messages, key) if warm else self._local.complete(local_messages)
             except Exception:
                 log.exception("local model warm-up failed")
 
@@ -296,6 +319,7 @@ class LocalModel:
         import psutil
         from llama_cpp import Llama
 
+        self.path = model_path
         # One thread per physical core: hyper-threads slow llama.cpp down rather than speed it up.
         self.llm = Llama(model_path=str(model_path), n_ctx=8192, n_threads=psutil.cpu_count(logical=False) or 4,
                          verbose=False)
@@ -305,6 +329,45 @@ class LocalModel:
         with self._lock:
             out = self.llm.create_chat_completion(messages=messages, max_tokens=256, temperature=0.3)
         return out["choices"][0]["message"]["content"] or ""
+
+    def warm(self, messages: list[dict], key: str) -> None:
+        """Process the long fixed prompt once and keep the result next to the model file. Later starts load it
+        in seconds instead of ~100 s of full CPU, which also slowed speech recognition right after startup."""
+        import llama_cpp
+        import numpy as np
+
+        saved = self.path.with_name(f"{self.path.stem}.{key}-{llama_cpp.__version__}.prompt")
+        if saved.exists():
+            try:
+                with self._lock:
+                    self._load(saved)
+                return
+            except Exception:
+                log.exception("saved prompt %s unusable; processing the prompt again", saved.name)
+        self.complete(messages)
+        with self._lock:
+            state = self.llm.save_state()
+        for old in self.path.parent.glob(f"{self.path.stem}.*.prompt"):  # one per tool list; drop stale ones
+            old.unlink(missing_ok=True)
+        tmp = saved.with_suffix(".tmp")
+        with tmp.open("wb") as f:  # numpy's format, not pickle: loading it can't run code
+            np.savez(f, input_ids=state.input_ids, n_tokens=state.n_tokens, seed=state.seed,
+                     llama_state=np.frombuffer(state.llama_state, dtype=np.uint8))
+        tmp.replace(saved)
+
+    def _load(self, saved: Path) -> None:
+        import numpy as np
+        from llama_cpp.llama import LlamaState
+
+        with np.load(saved) as d:
+            blob = d["llama_state"]
+            state = LlamaState(
+                input_ids=d["input_ids"], n_tokens=int(d["n_tokens"]), seed=int(d["seed"]),
+                llama_state=blob.tobytes(), llama_state_size=blob.size,
+                # logits aren't kept without logits_all, and load_state broadcasts this one row over the rest
+                scores=np.zeros((1, self.llm.n_vocab()), dtype=np.single),
+            )
+        self.llm.load_state(state)
 
 
 def download_local_model(models_dir: Path, local_only: bool = False) -> Path:

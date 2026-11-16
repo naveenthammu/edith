@@ -166,9 +166,15 @@ def window(action: str) -> str:
 # ---------- keyboard, mouse, clipboard ----------
 
 @skill()
-def type_text(text: str) -> str:
-    """Type text into the focused app, as if typed on the keyboard."""
+def type_text(text: str, app: str = "") -> str:
+    """Type text as if on the keyboard. Give app (e.g. 'notepad') to bring that window to the front first;
+    without it the text goes to whichever window has focus."""
     import pyautogui
+
+    from skills.screen import focus_window  # here, not at the top: skills.screen imports this module
+
+    if app and not focus_window(app):
+        return f"error: no open window for {app}"  # never type into a random window
 
     if text.isascii():
         pyautogui.write(text, interval=0.01)
