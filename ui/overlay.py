@@ -7,7 +7,7 @@ from pathlib import Path
 log = logging.getLogger("edith.ui")
 
 HTML = Path(__file__).with_name("orb.html")
-WIDTH, HEIGHT, MARGIN = 220, 220, 16  # collapsed card; grows when the history panel opens
+WIDTH, HEIGHT, MARGIN = 280, 280, 16  # collapsed card; grows when the history panel opens
 OPACITY = 0.9   # whole-window alpha: the desktop shows faintly through the card
 CARD = (4, 4, 6)  # must match --card in orb.html
 

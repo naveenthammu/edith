@@ -128,6 +128,7 @@ def run(overlay=None) -> None:
     assistant.llm = llm
     memory = Memory(cfg.data_dir / "memory.txt")
     memory_skill.memory = memory
+    naukri.announce = productivity.announce
     naukri.start_daily()  # does nothing until the user has logged in to Naukri once
 
     def confirm(action: str) -> bool:

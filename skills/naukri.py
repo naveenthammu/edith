@@ -21,6 +21,7 @@ PROFILE_URL = "https://www.naukri.com/mnjuser/profile"
 LOGIN_WAIT_SECONDS = 300
 CHECK_EVERY_SECONDS = 3600
 _lock = threading.Lock()  # one browser on the profile at a time; Chrome refuses a second one anyway
+announce = lambda text: None  # main.py points this at the speaker
 
 
 def _open_browser(p, headless: bool):
@@ -85,6 +86,8 @@ def refresh_profile() -> str:
             page.get_by_role("button", name="Save").click(timeout=15000)
             page.wait_for_timeout(3000)
         except Exception as e:
+            if type(e).__name__ == "TargetClosedError":
+                return "error: the Naukri window was closed before I finished. Ask me to refresh Naukri again."
             log.exception("naukri refresh failed")
             return f"error: couldn't refresh Naukri ({type(e).__name__})"
         finally:
@@ -109,6 +112,8 @@ def start_daily() -> None:
             last = LAST_FILE.read_text(encoding="utf-8").strip() if LAST_FILE.exists() else ""
             if PROFILE_DIR.exists() and today not in (last, tried):
                 tried = today
+                # a browser window is about to pop up on its own: say why, so it isn't closed as a stray window
+                announce("Refreshing your Naukri profile, sir. Please leave the browser window open for a few seconds.")
                 log.info("daily naukri refresh: %s", refresh_naukri())
             time.sleep(CHECK_EVERY_SECONDS)
 
