@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 DATA = Path(__file__).resolve().parent.parent / "data"
 PROFILE_DIR = DATA / "browser" / "naukri"
 LAST_FILE = DATA / "naukri_last_refresh.txt"
+TRIED_FILE = DATA / "naukri_last_try.txt"  # on disk: each restart used to pop up the browser again
 LOGIN_URL = "https://www.naukri.com/nlogin/login"
 PROFILE_URL = "https://www.naukri.com/mnjuser/profile"
 LOGIN_WAIT_SECONDS = 300
@@ -102,19 +103,29 @@ def refresh_naukri() -> str:
     return refresh_profile()
 
 
+def _read_day(path: Path) -> str:
+    return path.read_text(encoding="utf-8").strip() if path.exists() else ""
+
+
+def daily_once(today: str) -> None:
+    """One attempt per day, so a failure doesn't pop up a browser every hour or on every restart."""
+    if not PROFILE_DIR.exists() or today in (_read_day(LAST_FILE), _read_day(TRIED_FILE)):
+        return
+    TRIED_FILE.write_text(today, encoding="utf-8")
+    # a browser window is about to pop up on its own: say why, so it isn't closed as a stray window
+    announce("Refreshing your Naukri profile, sir. Please leave the browser window open for a few seconds.")
+    result = refresh_naukri()
+    log.info("daily naukri refresh: %s", result)
+    if result.startswith("error: "):  # otherwise an expired login fails silently every day
+        announce(f"Naukri refresh failed, sir: {result.removeprefix('error: ')}")
+
+
 def start_daily() -> None:
     """Refresh once a day in the background, but only after the user has logged in once."""
 
     def loop():
-        tried = ""  # one attempt per day, so a failure doesn't pop up a browser every hour
         while True:
-            today = date.today().isoformat()
-            last = LAST_FILE.read_text(encoding="utf-8").strip() if LAST_FILE.exists() else ""
-            if PROFILE_DIR.exists() and today not in (last, tried):
-                tried = today
-                # a browser window is about to pop up on its own: say why, so it isn't closed as a stray window
-                announce("Refreshing your Naukri profile, sir. Please leave the browser window open for a few seconds.")
-                log.info("daily naukri refresh: %s", refresh_naukri())
+            daily_once(date.today().isoformat())
             time.sleep(CHECK_EVERY_SECONDS)
 
     threading.Thread(target=loop, daemon=True, name="naukri-daily").start()

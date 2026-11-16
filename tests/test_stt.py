@@ -56,6 +56,20 @@ def test_clean_transcript_drops_noise_and_loops():
     assert clean_transcript([seg(" Edith, Edith.")]) == ""  # wake word alone: nothing to do
     assert clean_transcript([seg(" Edith, close all the apps.")]) == "Edith, close all the apps."
 
+
+def test_clean_transcript_drops_short_loops_whisper_scores_as_normal():
+    # From the log: noise came out as this and EDITH called shutdown_pc.
+    assert clean_transcript([seg(" Shut it, shut it, shut it, shut it.")]) == ""
+    # A loop split over segments: each one alone scores under the 2.4 ratio limit.
+    babble = [seg(" I like to play games that, like, you know,"), seg(" like, you know, like, you know,"),
+              seg(" like, you know, like, you know, You")]
+    assert clean_transcript(babble) == ""
+
+
+def test_clean_transcript_keeps_short_natural_repeats():
+    assert clean_transcript([seg(" No, no, no.")]) == "No, no, no."
+    assert clean_transcript([seg(" Volume up, up.")]) == "Volume up, up."
+
 CHUNK = 0.1  # seconds per chunk
 
 

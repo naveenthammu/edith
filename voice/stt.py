@@ -15,6 +15,7 @@ PRE_ROLL_CHUNKS = 3  # keep 0.3 s before speech starts
 VOCABULARY = ("Edith, open notepad, calculator, VS Code, Chrome, YouTube, WhatsApp, Instagram, Gmail, "
               "weather, Wikipedia, volume up, volume down, mute, screenshot, battery, remind me, note, "
               "lock the PC, shutdown, switch to offline mode, switch to online mode, Naukri profile.")
+LOOP = re.compile(r"(?<![a-z'])((?:[a-z']+ ){1,4})\1{3}")  # a 1-4 word phrase 4+ times in a row
 
 
 def clean_transcript(segments, wake_word: str = "edith") -> str:
@@ -26,8 +27,12 @@ def clean_transcript(segments, wake_word: str = "edith") -> str:
     kept = [s.text.strip() for s in segments
             if not (s.no_speech_prob > 0.6 and s.avg_logprob < -1.0) and s.compression_ratio <= 2.4]
     text = " ".join(kept).strip()
-    words = re.findall(r"[a-z]+", text.lower())
-    return "" if words and set(words) == {wake_word} else text  # only the wake word: nothing to act on
+    words = re.findall(r"[a-z']+", text.lower())
+    if words and set(words) == {wake_word}:
+        return ""  # only the wake word: nothing to act on
+    # Short loops ("Shut it, shut it, shut it, shut it.") score under 2.4 and once triggered shutdown_pc;
+    # people repeat a phrase 3 times at most ("No, no, no."), Whisper loops on noise far longer.
+    return "" if LOOP.search(" ".join(words) + " ") else text
 
 
 def collect_speech(chunks: Iterator[np.ndarray], chunk_sec: float, threshold: float,
