@@ -244,7 +244,7 @@ class LLM:
                 self._announced = False
                 return reply
             except REMOTE_ERRORS as e:
-                log.warning("Claude failed, using local model: %s", e)
+                log.warning("Online model failed, using local model: %s", e)
                 self._offline_until = self.clock() + RETRY_REMOTE_AFTER
                 if self.on_fallback and not self._announced:
                     self._announced = True

@@ -124,7 +124,7 @@ def run(overlay=None) -> None:
     revive = lambda: ensure_proxy(cfg.base_url, os.getenv("FREELLMAPI_APP"))  # load_config already read .env
     revive()
     prefetch_local_model(cfg.models_dir)  # background download so offline fallback is ready later
-    llm = build_llm(cfg, on_fallback=lambda: speaker.say("Switching to offline mode, sir."), revive=revive)
+    llm = build_llm(cfg, on_fallback=lambda: speaker.say("Switching to offline mode, sir. The first answer may take a minute."), revive=revive)
     assistant.llm = llm
     memory = Memory(cfg.data_dir / "memory.txt")
     memory_skill.memory = memory

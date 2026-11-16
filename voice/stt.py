@@ -1,4 +1,5 @@
 import queue
+import re
 import time
 from collections import deque
 from pathlib import Path
@@ -14,6 +15,19 @@ PRE_ROLL_CHUNKS = 3  # keep 0.3 s before speech starts
 VOCABULARY = ("Edith, open notepad, calculator, VS Code, Chrome, YouTube, WhatsApp, Instagram, Gmail, "
               "weather, Wikipedia, volume up, volume down, mute, screenshot, battery, remind me, note, "
               "lock the PC, shutdown, switch to offline mode, switch to online mode.")
+
+
+def clean_transcript(segments, wake_word: str = "edith") -> str:
+    """Join Whisper segments, dropping ones Whisper itself marks as likely noise.
+
+    Thresholds are Whisper's own defaults: silence = no_speech_prob > 0.6 with avg_logprob < -1,
+    and a repetition loop = compression_ratio > 2.4 (e.g. "Edith, Edith, Edith" from the prompt bias).
+    """
+    kept = [s.text.strip() for s in segments
+            if not (s.no_speech_prob > 0.6 and s.avg_logprob < -1.0) and s.compression_ratio <= 2.4]
+    text = " ".join(kept).strip()
+    words = re.findall(r"[a-z]+", text.lower())
+    return "" if words and set(words) == {wake_word} else text  # only the wake word: nothing to act on
 
 
 def collect_speech(chunks: Iterator[np.ndarray], chunk_sec: float, threshold: float,
@@ -83,4 +97,4 @@ class Listener:
             return None
         segments, _ = self.model.transcribe(audio, language="en", beam_size=5, vad_filter=True,
                                             initial_prompt=VOCABULARY)
-        return " ".join(s.text.strip() for s in segments).strip()
+        return clean_transcript(segments)

@@ -4,7 +4,22 @@ import numpy as np
 
 from types import SimpleNamespace
 
-from voice.stt import collect_speech, heard_self
+from voice.stt import clean_transcript, collect_speech, heard_self
+
+
+def seg(text, no_speech=0.1, logprob=-0.3, ratio=1.2):
+    return SimpleNamespace(text=text, no_speech_prob=no_speech, avg_logprob=logprob, compression_ratio=ratio)
+
+
+def test_clean_transcript_keeps_real_speech():
+    assert clean_transcript([seg(" Open notepad.")]) == "Open notepad."
+
+
+def test_clean_transcript_drops_noise_and_loops():
+    assert clean_transcript([seg(" Thank you.", no_speech=0.9, logprob=-1.5)]) == ""
+    assert clean_transcript([seg(" Edith, Edith, Edith, Edith, Edith.", ratio=3.0)]) == ""
+    assert clean_transcript([seg(" Edith, Edith.")]) == ""  # wake word alone: nothing to do
+    assert clean_transcript([seg(" Edith, close all the apps.")]) == "Edith, close all the apps."
 
 CHUNK = 0.1  # seconds per chunk
 
