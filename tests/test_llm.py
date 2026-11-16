@@ -293,3 +293,40 @@ def test_openai_remote_strips_claude_content():
     history = MSGS + [{"role": "assistant", "content": "x", "claude_content": [{"type": "text", "text": "x"}]}]
     assert OpenAIRemote(Client(), "auto").chat(history, []).text == "hi"
     assert all("claude_content" not in m for m in seen["messages"])
+
+
+def _flaky_client(error):
+    calls = []
+
+    class Client:
+        def __init__(self):
+            self.chat = self.completions = self
+
+        def create(self, **kw):
+            calls.append(1)
+            if len(calls) == 1:
+                raise error(request=httpx2.Request("POST", "http://x"))
+            msg = SimpleNamespace(content="back", tool_calls=None, model_dump=lambda exclude_none: {})
+            return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+
+    return Client(), calls
+
+
+def test_openai_remote_revives_dead_proxy_and_retries():
+    import openai
+
+    client, calls = _flaky_client(openai.APIConnectionError)
+    assert OpenAIRemote(client, "auto", revive=lambda: True).chat(MSGS, []).text == "back"
+    assert len(calls) == 2
+    client, _ = _flaky_client(openai.APIConnectionError)
+    with pytest.raises(openai.APIConnectionError):
+        OpenAIRemote(client, "auto", revive=lambda: False).chat(MSGS, [])
+
+
+def test_openai_remote_does_not_retry_timeouts():
+    import openai
+
+    client, calls = _flaky_client(openai.APITimeoutError)
+    with pytest.raises(openai.APITimeoutError):
+        OpenAIRemote(client, "auto", revive=lambda: pytest.fail("timeout must not revive")).chat(MSGS, [])
+    assert len(calls) == 1

@@ -171,14 +171,24 @@ FREE_TIMEOUT = 30.0  # tool-calling routes via FreeLLMAPI measured ~9s; 8s made 
 class OpenAIRemote:
     """An OpenAI-compatible endpoint such as FreeLLMAPI (free tiers of several providers)."""
 
-    def __init__(self, client, model: str):
+    def __init__(self, client, model: str, revive: Callable[[], bool] | None = None):
         self.client, self.model = client, model
+        self.revive = revive  # restarts the local proxy if it died; True once it answers again
 
     def chat(self, messages: list[dict], tools: list[dict]) -> "Reply":
         # Claude's raw content is only for Claude; other providers may reject unknown fields.
         clean = [{k: v for k, v in m.items() if k != "claude_content"} for m in messages]
         extra = {"tools": tools} if tools else {}
-        resp = self.client.chat.completions.create(model=self.model, messages=clean, timeout=FREE_TIMEOUT, **extra)
+        kw = dict(model=self.model, messages=clean, timeout=FREE_TIMEOUT, **extra)
+        try:
+            resp = self.client.chat.completions.create(**kw)
+        except openai.APITimeoutError:
+            raise  # proxy is up but slow; retrying would only double the wait
+        except openai.APIConnectionError:
+            # Proxy gone mid-session: relaunch it rather than drop to the minutes-slow local model.
+            if not (self.revive and self.revive()):
+                raise
+            resp = self.client.chat.completions.create(**kw)
         msg = resp.choices[0].message
         calls = [{"id": tc.id, "name": tc.function.name, "arguments": _loads_args(tc.function.arguments)}
                  for tc in msg.tool_calls or []]
@@ -312,13 +322,13 @@ def prefetch_local_model(models_dir: Path) -> None:
     threading.Thread(target=run, daemon=True, name="model-download").start()
 
 
-def build_llm(cfg, on_fallback: Callable | None = None) -> LLM:
+def build_llm(cfg, on_fallback: Callable | None = None, revive: Callable[[], bool] | None = None) -> LLM:
     remotes = []
     if cfg.anthropic_key:
         remotes.append(ClaudeRemote(anthropic.Anthropic(api_key=cfg.anthropic_key, max_retries=0), cfg.claude_model))
     if cfg.base_url and cfg.api_key:
         remotes.append(OpenAIRemote(openai.OpenAI(base_url=cfg.base_url.rstrip("/") + "/v1", api_key=cfg.api_key,
-                                                  max_retries=0), cfg.model))
+                                                  max_retries=0), cfg.model, revive))
     return LLM(
         RemoteChain(remotes) if remotes else None,
         local_factory=lambda: LocalModel(download_local_model(cfg.models_dir, local_only=True)),
