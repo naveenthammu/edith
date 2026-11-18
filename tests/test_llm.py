@@ -399,3 +399,22 @@ def test_openai_remote_does_not_retry_timeouts():
     with pytest.raises(openai.APITimeoutError):
         OpenAIRemote(client, "auto", revive=lambda: pytest.fail("timeout must not revive")).chat(MSGS, [])
     assert len(calls) == 1
+
+
+def test_ask_images_sends_every_image_then_prompt():
+    from types import SimpleNamespace
+
+    from brain.llm import ClaudeRemote
+
+    sent = {}
+
+    class Msgs:
+        def create(self, **kw):
+            sent.update(kw)
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text="12,34")])
+
+    remote = ClaudeRemote(SimpleNamespace(messages=Msgs()), "m")
+    assert remote.ask_images([b"a", b"b"], "where?") == "12,34"
+    blocks = sent["messages"][0]["content"]
+    assert [b["type"] for b in blocks] == ["image", "image", "text"]
+    assert blocks[-1]["text"] == "where?"

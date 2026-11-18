@@ -183,6 +183,16 @@ class ClaudeRemote:
         )
         return " ".join(b.text for b in resp.content if b.type == "text").strip()
 
+    def ask_images(self, images: list[bytes], prompt: str, max_tokens: int = 1024) -> str:
+        """Send PNG images then a prompt; return Claude's raw text (no spoken-answer shaping)."""
+        blocks = [{"type": "image", "source": {"type": "base64", "media_type": "image/png",
+                                               "data": base64.standard_b64encode(png).decode()}} for png in images]
+        resp = self.client.messages.create(
+            model=self.model, max_tokens=max_tokens, output_config={"effort": "low"}, timeout=REMOTE_TIMEOUT,
+            messages=[{"role": "user", "content": blocks + [{"type": "text", "text": prompt}]}],
+        )
+        return " ".join(b.text for b in resp.content if b.type == "text").strip()
+
 
 FREE_TIMEOUT = 30.0  # tool-calling routes via FreeLLMAPI measured ~9s; 8s made every such call fall back offline
 
