@@ -80,8 +80,8 @@ def converse(agent, listener, speaker, on_turn=lambda who, text: None, first: st
         log.info("heard: %s", text)  # so misheard words can be checked later
         on_turn("you", text)
         if is_goodbye(text):
-            on_turn("edith", "Goodbye sir.")
-            speaker.say("Goodbye sir.")
+            on_turn("edith", "Goodbye Naveen.")
+            speaker.say("Goodbye Naveen.")
             return
         reply = agent.handle(text)
         on_turn("edith", reply)
@@ -119,7 +119,7 @@ def run(overlay=None) -> None:
     cfg = load_config()
     setup_logging(cfg.data_dir)
     speaker = Speaker()
-    speaker.say("Edith is starting up, sir. Please wait.")
+    speaker.say("Edith is starting up, AI models are getting ready to serve you, naveen.")
 
     skills.load_all()
     productivity.announce = lambda text: speaker.say(text, wait=False)
@@ -142,6 +142,8 @@ def run(overlay=None) -> None:
         return is_yes(answer)
 
     agent = Agent(llm, confirm, memory=memory)
+    from skills import telegram
+    telegram.start_bot(lambda ask: Agent(llm, ask, memory=memory))  # chat with EDITH from your phone
     if llm.local_ready():  # load the offline model in the background so a fallback answers fast, not after minutes
         llm.warm_up(agent._messages(), skills.tool_schemas())
     speaker.say("Edith 3 point o is online. Say Edith when you need me.")
@@ -159,7 +161,7 @@ def run(overlay=None) -> None:
         if overlay:
             overlay.show()
         if not first:
-            speaker.say("Yes sir?")
+            speaker.say("Yes Naveen?")
         converse(agent, listener, speaker, overlay.add if overlay else lambda who, text: None, first=first or None)
         if llm.remote and not llm.force_offline:  # the offline model is too weak to judge what's worth keeping
             try:

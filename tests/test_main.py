@@ -59,13 +59,13 @@ class EchoAgent:
 def test_converse_until_goodbye():
     speaker = FakeSpeaker()
     converse(EchoAgent(), FakeListener(["hello", "", "bye"]), speaker)
-    assert speaker.said == ["you said hello", "I didn't catch that, sir.", "Goodbye sir."]
+    assert speaker.said == ["you said hello", "I didn't catch that, sir.", "Goodbye Naveen."]
 
 
 def test_converse_answers_request_heard_with_wake_word_first():
     speaker = FakeSpeaker()
     converse(EchoAgent(), FakeListener(["bye"]), speaker, first="what's the time")
-    assert speaker.said == ["you said what's the time", "Goodbye sir."]
+    assert speaker.said == ["you said what's the time", "Goodbye Naveen."]
 
 
 def test_converse_returns_on_silence():
@@ -98,4 +98,4 @@ def test_converse_reports_each_turn_for_history():
     turns = []
     converse(EchoAgent(), FakeListener(["hello", "", "bye"]), FakeSpeaker(),
              lambda who, text: turns.append((who, text)))
-    assert turns == [("you", "hello"), ("edith", "you said hello"), ("you", "bye"), ("edith", "Goodbye sir.")]
+    assert turns == [("you", "hello"), ("edith", "you said hello"), ("you", "bye"), ("edith", "Goodbye Naveen.")]
