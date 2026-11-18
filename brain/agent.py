@@ -143,6 +143,8 @@ class Agent:
         facts = self.memory.facts() if self.memory else []
         if facts:
             system += MEMORY_PROMPT.format(facts="\n".join(f"- {f}" for f in facts))
+        from skills.teach import taught_summary  # here, not at the top: skills modules import brain.llm
+        system += taught_summary()  # in the prompt, not tool descriptions, so the offline prompt cache stays valid
         return [{"role": "system", "content": system}] + self.history
 
     def _trim(self) -> None:

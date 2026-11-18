@@ -53,6 +53,16 @@ Things to try:
 | "Remember that I prefer Celsius" / "Forget Celsius" | Edits what EDITH knows about you |
 | "Log in to Naukri", then "Refresh my Naukri profile" | See below |
 
+### Teach EDITH a task
+
+Say "Edith, watch me", then do the task with your mouse and keyboard. When you finish, say "Edith, done, call it Monday report". EDITH sends what you did to Claude, which turns it into named steps. The steps are saved in `data/taught/monday-report/skill.json`, a plain file you can edit. Later, say "Do Monday report", or "Do Monday report for March" if the task has a value that changes. EDITH asks "Are you sure?" and then repeats the task. If a button has moved, she finds it again by its picture.
+
+- Learning needs internet. Replaying mostly doesn't: Claude vision is used only when a button can't be found by its picture.
+- Move the mouse into a screen corner to stop a replay.
+- EDITH doesn't record typing in windows whose title mentions a password or login. While she watches, keystrokes in every other window are recorded, so say "done" or "cancel" as soon as you finish.
+- "What have I taught you?" lists tasks. "Forget Monday report" deletes one.
+- Window tracking works on Windows. On macOS and Linux, replay relies on matching pictures and vision.
+
 ### Naukri
 
 Say "log in to Naukri" once: a browser window opens and you log in yourself. EDITH keeps the session in `data/browser/naukri` and never sees your password. After that, EDITH refreshes your profile once a day by re-saving your resume headline, which marks the profile as updated so recruiters see it higher. A Chrome window opens for about 15 seconds while it does this. If Naukri blocks the automated visit, EDITH tells you and you refresh it by hand that day.
