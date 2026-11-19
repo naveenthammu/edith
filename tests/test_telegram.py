@@ -13,3 +13,25 @@ def test_only_owner_messages_are_returned(monkeypatch):
 def test_send_needs_config(monkeypatch):
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     assert telegram.send_telegram("x").startswith("error")
+
+
+def test_backlog_is_skipped_on_start(monkeypatch):
+    monkeypatch.setattr(telegram, "_offset", 0)
+    monkeypatch.setattr(telegram, "_api", lambda method, **kw: [{"update_id": 41, "message": {"text": "shutdown"}}])
+    telegram._skip_backlog()
+    assert telegram._offset == 42
+
+
+def test_errors_never_carry_the_token(monkeypatch):
+    import pytest
+    import requests
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:SECRET")
+
+    def boom(url, **kw):
+        raise requests.ConnectionError(f"failed for {url}")
+
+    monkeypatch.setattr(telegram.requests, "post", boom)
+    with pytest.raises(requests.RequestException) as e:
+        telegram._api("getUpdates")
+    assert "SECRET" not in str(e.value) and e.value.__cause__ is None

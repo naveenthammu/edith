@@ -25,6 +25,10 @@
   #bar button:hover { background: rgba(60,60,72,.95); }
   #bar button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   #histBtn[aria-expanded="true"] { transform: rotate(180deg); }
+  #micBtn { display: grid; place-items: center; padding: 0; }
+  #micBtn .slash { display: none; }
+  #micBtn[aria-pressed="true"] { background: rgba(220,60,70,.9); border-color: rgba(255,120,120,.8); }
+  #micBtn[aria-pressed="true"] .slash { display: inline; }
   #panel { display: none; margin: 0 8px 8px; max-height: 200px; overflow-y: auto; padding: 8px;
     background: var(--glass); border: 1px solid var(--line); border-radius: 14px; user-select: text; }
   /* no standard scrollbar-color here: Chromium then ignores these ::-webkit rules and shows arrows */
@@ -47,6 +51,11 @@
   <div id="stage">
     <canvas id="c" class="pywebview-drag-region" aria-hidden="true" title="Drag to move"></canvas>
     <div id="bar">
+      <button id="micBtn" aria-label="Mute microphone" aria-pressed="false" title="Mute microphone">
+        <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/>
+          <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><path class="slash" d="M4 4l16 16"/></svg>
+      </button>
       <button id="histBtn" aria-label="Show history" aria-expanded="false" aria-controls="panel">▾</button>
       <button id="minBtn" aria-label="Minimize">–</button>
       <button id="closeBtn" aria-label="Close">✕</button>
@@ -309,6 +318,15 @@ histBtn.addEventListener('click', () => {
   histBtn.setAttribute('aria-label', open ? 'Hide history' : 'Show history');
   panel.scrollTop = panel.scrollHeight;
   fit();
+});
+const micBtn = document.getElementById('micBtn');
+micBtn.addEventListener('click', async () => {
+  if (!window.pywebview) return;
+  const muted = await pywebview.api.toggle_mic();
+  micBtn.setAttribute('aria-pressed', muted);
+  const label = muted ? 'Unmute microphone' : 'Mute microphone';
+  micBtn.setAttribute('aria-label', label);
+  micBtn.title = label;
 });
 document.getElementById('minBtn').addEventListener('click', () => {
   if (window.pywebview) pywebview.api.minimize();

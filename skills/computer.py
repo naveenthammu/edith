@@ -134,7 +134,8 @@ def close_app(name: str) -> str:
     needle = name.strip().lower().removesuffix(".exe")
     if len(needle) < 3:
         return "error: app name too short"
-    procs = [p for p in psutil.process_iter(["name"]) if needle in (p.info["name"] or "").lower()]
+    # Whole names only: a substring match let "host" kill svchost.exe.
+    procs = [p for p in psutil.process_iter(["name"]) if (p.info["name"] or "").lower().removesuffix(".exe") == needle]
     for p in procs:
         try:
             p.terminate()
@@ -419,6 +420,10 @@ def send_whatsapp(contact: str, message: str) -> str:
     webbrowser.open(url)
     import pyautogui
 
+    from skills.screen import focus_window  # here, not at the top: skills.screen imports this module
+
     time.sleep(WHATSAPP_LOAD_SECONDS if not app else 5)
+    if not focus_window("whatsapp"):  # never press Enter in some other window
+        return "error: WhatsApp didn't open, so nothing was sent"
     pyautogui.press("enter")
-    return f"Message sent to {contact}."
+    return f"Opened the chat with {contact} and pressed Enter to send."

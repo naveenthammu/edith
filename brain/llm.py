@@ -5,6 +5,7 @@ import logging
 import re
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -48,12 +49,13 @@ def parse_local_reply(text: str) -> Reply:
     if not isinstance(data, dict) or not isinstance(data.get("tool"), str):
         return plain
     args = data.get("args") if isinstance(data.get("args"), dict) else {}
-    call = {"id": "local-1", "name": data["tool"], "arguments": args}
+    call_id = f"local-{uuid.uuid4().hex[:12]}"  # unique: Claude rejects repeated tool ids once back online
+    call = {"id": call_id, "name": data["tool"], "arguments": args}
     message = {
         "role": "assistant",
         "content": None,
         "tool_calls": [
-            {"id": "local-1", "type": "function", "function": {"name": data["tool"], "arguments": json.dumps(args)}}
+            {"id": call_id, "type": "function", "function": {"name": data["tool"], "arguments": json.dumps(args)}}
         ],
     }
     return Reply(None, [call], message)
@@ -100,6 +102,8 @@ def to_local_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
 REMOTE_TIMEOUT = 30.0  # seconds; Claude thinks before tool calls, so allow more than a plain chat reply
 RETRY_REMOTE_AFTER = 60.0  # seconds offline before trying Claude again
 REMOTE_ERRORS = (anthropic.APIError, openai.APIError)  # incl. offline, rate limits, no credits
+TRANSIENT_ERRORS = (anthropic.APITimeoutError, anthropic.InternalServerError,  # slow or 5xx: worth one retry
+                    openai.APITimeoutError, openai.InternalServerError)
 
 LOCAL_REPO = "bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF"
 # ~2.3 GB file, ~4.1 GB RAM. Benchmarked once on EDITH's 54-tool prompt (i5-1145G7, CPU only, 8 requests):
@@ -262,6 +266,7 @@ class LLM:
         self.on_fallback = on_fallback
         self.clock = clock
         self._local = None
+        self._load_lock = threading.Lock()  # warm-up, voice and Telegram threads must not load the 4 GB model twice
         self._offline_until = 0.0
         self._announced = False
         self._local_retry_at = 0.0
@@ -269,7 +274,12 @@ class LLM:
     def chat(self, messages: list[dict], tools: list[dict]) -> Reply:
         if self.remote is not None and not self.force_offline and self.clock() >= self._offline_until:
             try:
-                reply = self.remote.chat(messages, tools)
+                try:
+                    reply = self.remote.chat(messages, tools)
+                except TRANSIENT_ERRORS as e:
+                    # FreeLLMAPI often routes the retry to a faster provider; offline takes minutes on this CPU
+                    log.warning("Online model hiccup, retrying once: %s", e)
+                    reply = self.remote.chat(messages, tools)
                 self._announced = False
                 return reply
             except REMOTE_ERRORS as e:
@@ -284,15 +294,19 @@ class LLM:
         if self._local is None and self.clock() < self._local_retry_at:
             raise LLMUnavailable("local model unavailable")
         try:
-            if self._local is None:
-                self._local = self.local_factory()
-            reply = parse_local_reply(self._local.complete(to_local_messages(messages, tools)))
+            reply = parse_local_reply(self._local_model().complete(to_local_messages(messages, tools)))
             reply.local = True
             return reply
         except Exception as e:
             log.exception("local model failed")
             self._local_retry_at = self.clock() + RETRY_REMOTE_AFTER
             raise LLMUnavailable(str(e)) from e
+
+    def _local_model(self):
+        with self._load_lock:
+            if self._local is None:
+                self._local = self.local_factory()
+            return self._local
 
     def offline(self) -> bool:
         """True when the next chat() goes to the local model."""
@@ -306,10 +320,9 @@ class LLM:
 
         def run():
             try:
-                if self._local is None:
-                    self._local = self.local_factory()
-                warm = getattr(self._local, "warm", None)
-                warm(local_messages, key) if warm else self._local.complete(local_messages)
+                local = self._local_model()
+                warm = getattr(local, "warm", None)
+                warm(local_messages, key) if warm else local.complete(local_messages)
             except Exception:
                 log.exception("local model warm-up failed")
 

@@ -136,3 +136,14 @@ def test_screenshot_of_missing_app_is_an_error(monkeypatch):
 
     monkeypatch.setattr(screen, "capture_window", lambda app, path: None)
     assert system.screenshot("ghostapp").startswith("error")
+
+
+def test_close_app_matches_whole_names_only(monkeypatch):
+    from types import SimpleNamespace
+
+    from skills import computer
+
+    procs = [SimpleNamespace(info={"name": n}, terminate=lambda: None) for n in ("svchost.exe", "chrome.exe")]
+    monkeypatch.setattr(computer.psutil, "process_iter", lambda attrs: procs)
+    assert REGISTRY["close_app"].func("host") == "host is not running."
+    assert REGISTRY["close_app"].func("chrome") == "Closed 1 chrome process."

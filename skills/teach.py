@@ -5,6 +5,7 @@ Replay finds each click by exact picture match, then Claude vision, then the rec
 """
 import io
 import json
+import logging
 import re
 import shutil
 import threading
@@ -15,6 +16,7 @@ from skills import skill
 from skills.computer import OS, press_keys, type_text
 from skills.screen import VISION_MAX_SIDE, focus_window
 
+log = logging.getLogger(__name__)
 TAUGHT = Path(__file__).resolve().parent.parent / "data" / "taught"
 STEP_KINDS = {"focus", "click", "type", "keys", "wait"}
 CHORD_MODS = {"ctrl", "alt", "win", "command"}  # shift alone just changes the letter typed
@@ -232,6 +234,8 @@ def finish_teaching(name: str) -> str:
 
     if _rec is None:
         return "error: I'm not watching anything. Say 'watch me' first."
+    if not slug(name):  # an empty slug would point at the whole taught folder and delete every task
+        return "error: give the task a name with English letters or numbers, sir."
     _rec.stop()
     events = group_keys(_rec.events)
     if not events:
@@ -339,7 +343,15 @@ def do_taught(name: str, values: str = "") -> str:
 def _tasks() -> list[dict]:
     if not TAUGHT.exists():
         return []
-    return [json.loads(f.read_text()) for f in sorted(TAUGHT.glob("*/skill.json")) if f.parent.name != "_recording"]
+    out = []
+    for f in sorted(TAUGHT.glob("*/skill.json")):
+        if f.parent.name == "_recording":
+            continue
+        try:  # every prompt reads these: one broken file must not break EDITH
+            out.append(json.loads(f.read_text()))
+        except ValueError:
+            log.warning("skipping unreadable taught task %s", f)
+    return out
 
 
 def _line(t: dict) -> str:

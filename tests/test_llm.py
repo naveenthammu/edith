@@ -17,7 +17,10 @@ TOOLS = [
 def test_parse_local_reply_tool_call():
     reply = parse_local_reply('{"tool": "get_weather", "args": {"city": "Pune"}}')
     assert reply.text is None
-    assert reply.tool_calls == [{"id": "local-1", "name": "get_weather", "arguments": {"city": "Pune"}}]
+    call = reply.tool_calls[0]
+    assert call["name"] == "get_weather" and call["arguments"] == {"city": "Pune"}
+    assert call["id"].startswith("local-") and reply.message["tool_calls"][0]["id"] == call["id"]
+    assert parse_local_reply('{"tool": "x"}').tool_calls[0]["id"] != call["id"]
     fn = reply.message["tool_calls"][0]["function"]
     assert fn["name"] == "get_weather"
     assert json.loads(fn["arguments"]) == {"city": "Pune"}
@@ -418,3 +421,33 @@ def test_ask_images_sends_every_image_then_prompt():
     blocks = sent["messages"][0]["content"]
     assert [b["type"] for b in blocks] == ["image", "image", "text"]
     assert blocks[-1]["text"] == "where?"
+
+
+def test_local_model_loads_once_across_threads():
+    import time
+
+    loads = []
+
+    def slow_factory():
+        loads.append(1)
+        time.sleep(0.2)
+        return FakeLocal()
+
+    llm = LLM(None, local_factory=slow_factory)
+    threads = [threading.Thread(target=llm.chat, args=(MSGS, [])) for _ in range(3)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert loads == [1]
+
+
+def test_one_timeout_is_retried_before_going_offline():
+    class Flaky(FakeRemote):
+        def chat(self, messages, tools):
+            self.calls += 1
+            if self.calls == 1:
+                raise anthropic.APITimeoutError(request=httpx2.Request("POST", "http://x"))
+            return self.reply
+
+    reply = Reply("online", [], {"role": "assistant", "content": "online"})
+    llm = LLM(Flaky(reply), local_factory=lambda: FakeLocal("local"))
+    assert llm.chat(MSGS, TOOLS).text == "online" and not llm.offline()

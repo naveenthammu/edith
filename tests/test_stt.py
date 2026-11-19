@@ -118,3 +118,20 @@ def test_heard_self():
     speaking = threading.Event()
     speaking.set()
     assert heard_self(2, SimpleNamespace(utterances=2, speaking=speaking))
+
+
+def test_muted_mic_yields_silence():
+    import queue
+
+    import numpy as np
+
+    from voice.stt import Mic
+
+    mic = Mic.__new__(Mic)  # no sound card needed
+    mic.q, mic.muted = queue.Queue(), __import__("threading").Event()
+    mic.q.put(np.ones(4, dtype=np.float32))
+    mic.q.put(np.ones(4, dtype=np.float32))
+    chunks = mic.chunks()
+    assert next(chunks).sum() == 4
+    mic.muted.set()
+    assert next(chunks).sum() == 0

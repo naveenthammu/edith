@@ -202,3 +202,19 @@ def test_forget(taught):
     assert teach.forget_taught("monday report") == "Forgot Monday report."
     assert not (taught / "monday-report").exists()
     assert teach.forget_taught("monday report").startswith("error")
+
+
+def test_finish_refuses_name_without_latin_letters(taught, monkeypatch):
+    (taught / "old").mkdir()
+    (taught / "old" / "skill.json").write_text('{"name": "old", "steps": []}')
+    monkeypatch.setattr(teach, "_seer", lambda: FakeSeer('{"steps": [{"keys": "enter"}]}'))
+    teach.start_teaching()
+    teach._rec.events = [k("a")]
+    assert teach.finish_teaching("रिपोर्ट").startswith("error")
+    assert (taught / "old" / "skill.json").exists() and teach._rec is not None
+
+
+def test_broken_task_file_is_skipped(taught):
+    (taught / "bad").mkdir()
+    (taught / "bad" / "skill.json").write_text("{not json")
+    assert teach.taught_summary() == ""

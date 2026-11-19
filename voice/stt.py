@@ -1,5 +1,6 @@
 import queue
 import re
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -72,6 +73,7 @@ class Mic:
         import sounddevice as sd
 
         self.q: queue.Queue = queue.Queue()
+        self.muted = threading.Event()  # set by the overlay's mic button: EDITH then hears only silence
         self.stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32",
                                      blocksize=int(SAMPLE_RATE * chunk_sec),
                                      callback=lambda data, *_: self.q.put(data[:, 0].copy()))
@@ -88,9 +90,10 @@ class Mic:
     def chunks(self) -> Iterator[np.ndarray]:
         while True:
             try:
-                yield self.q.get(timeout=0.5)  # wake up so Ctrl+C works on Windows
+                chunk = self.q.get(timeout=0.5)  # wake up so Ctrl+C works on Windows
             except queue.Empty:
                 continue
+            yield np.zeros_like(chunk) if self.muted.is_set() else chunk
 
 
 def heard_self(before: int, speaker) -> bool:

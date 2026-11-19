@@ -49,6 +49,21 @@ def volume(action: str, steps: int = 5) -> str:
     return f"Volume {action}"
 
 
+@skill()
+def set_volume(percent: int) -> str:
+    """Set the system volume to a level from 0 to 100 percent, e.g. 'volume to 50'."""
+    percent = max(0, min(int(percent), 100))
+    if OS == "Windows":
+        # shortcut: no volume API without a new dependency; each key press is 2 %, so go to 0 then climb
+        _press("volumedown", 50)
+        _press("volumeup", percent // 2)
+    elif OS == "Darwin":
+        subprocess.run(["osascript", "-e", f"set volume output volume {percent}"], check=False)
+    else:
+        subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{percent}%"], check=False)
+    return f"Volume set to {percent} percent."
+
+
 def _volume_cmd(key: str, percent: int) -> list[str]:
     if OS == "Darwin":
         script = ("set volume output muted (not output muted of (get volume settings))" if key == "volumemute" else

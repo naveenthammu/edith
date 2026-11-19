@@ -44,7 +44,7 @@ def test_tool_call_runs_skill_and_sends_result_back():
     llm = ScriptedLLM([_call("battery"), _text("Battery is at 80 percent.")])
     agent = Agent(llm, confirm=lambda a: True, registry=_registry(battery=(lambda: "80 percent", False)))
 
-    assert agent.handle("battery?") == "Battery is at 80 percent."
+    assert agent.handle("how much charge do I have left?") == "Battery is at 80 percent."
     last_messages = llm.requests[1][0]
     assert last_messages[-1] == {"role": "tool", "tool_call_id": "c1", "content": "80 percent"}
 
@@ -58,7 +58,7 @@ def test_offline_speaks_tool_result_without_second_model_call():
     llm = OfflineLLM([_call("battery")])
     agent = Agent(llm, confirm=lambda a: True,
                   registry=_registry(battery=(lambda: "Battery at 80 percent, charging.", False)))
-    assert agent.handle("battery?") == "Battery at 80 percent, charging."
+    assert agent.handle("how much charge do I have left?") == "Battery at 80 percent, charging."
     assert len(llm.requests) == 1
     assert agent.history[-1] == {"role": "assistant", "content": "Battery at 80 percent, charging."}
 
@@ -202,3 +202,11 @@ def test_memory_dedupes_caps_and_forgets(tmp_path):
         m.add(f"fact {i}")
     assert len(m.facts()) == mem.MAX_FACTS and "Likes tea" not in m.facts()
     assert m.forget("fact 20") == 6  # "fact 20" plus "fact 200".."fact 204"
+
+
+def test_confirm_question_names_the_target():
+    asked = []
+    registry = _registry(delete_file=(lambda path: "deleted", True))
+    Agent(ScriptedLLM([_call("delete_file", {"path": "Downloads/report.pdf"}), _text("Done.")]),
+          confirm=lambda a: asked.append(a) or True, registry=registry).handle("delete report")
+    assert asked == ["delete file Downloads/report.pdf"]

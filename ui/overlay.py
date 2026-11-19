@@ -19,7 +19,16 @@ class _Api:
         self._overlay = overlay  # underscore: pywebview does not expose it to the page
 
     def close(self) -> None:
-        self._overlay.hide()
+        if not self._overlay.muted():  # a hidden card while muted would leave no way to unmute
+            self._overlay.hide()
+
+    def toggle_mic(self) -> bool:
+        """Mute or unmute the microphone; returns True when muted."""
+        mic = self._overlay.mic
+        if mic is None:
+            return False
+        mic.muted.clear() if mic.muted.is_set() else mic.muted.set()
+        return mic.muted.is_set()
 
     def minimize(self) -> None:
         self._overlay.window.minimize()  # to the taskbar; the wake word restores it
@@ -39,6 +48,7 @@ class Overlay:
         import webview
 
         self._webview = webview
+        self.mic = None  # voice.stt.Mic, set by main.run once it exists; the mic button toggles mic.muted
         screen = webview.screens[0]
         self.window = webview.create_window(
             "EDITH",
@@ -72,6 +82,9 @@ class Overlay:
                 ctypes.c_void_p(int(form.Handle.ToInt64())), 33, ctypes.byref(ctypes.c_int(2)), 4)
 
         form.Invoke(Action(apply))
+
+    def muted(self) -> bool:
+        return self.mic is not None and self.mic.muted.is_set()
 
     def _js(self, script: str) -> None:
         if not self.window.events.loaded.wait(10):

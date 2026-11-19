@@ -124,6 +124,8 @@ def run(overlay=None) -> None:
     skills.load_all()
     productivity.announce = lambda text: speaker.say(text, wait=False)
     mic = Mic()
+    if overlay:
+        overlay.mic = mic  # the card's mic button mutes it
     listener = Listener(cfg.models_dir, cfg.mic_threshold, speaker=speaker, mic=mic)
     wake = WakeWord(ensure_vosk_model(cfg.models_dir), cfg.wake_word)
     revive = lambda: ensure_proxy(cfg.base_url, os.getenv("FREELLMAPI_APP"))  # load_config already read .env
@@ -163,13 +165,13 @@ def run(overlay=None) -> None:
         if not first:
             speaker.say("Yes Naveen?")
         converse(agent, listener, speaker, overlay.add if overlay else lambda who, text: None, first=first or None)
-        if llm.remote and not llm.force_offline:  # the offline model is too weak to judge what's worth keeping
+        if not llm.offline():  # also skips while Claude is temporarily down; the offline model is too weak to judge what's worth keeping
             try:
                 agent.learn()
             except Exception:
                 log.exception("learning failed")
         agent.reset()
-        if overlay:
+        if overlay and not overlay.muted():  # muted: keep the card up so its mic button can unmute
             overlay.hide()
 
 

@@ -21,8 +21,13 @@ _offset = 0  # next update id to fetch; only the bot thread touches it
 
 def _api(method: str, http_timeout: float = 15, **params) -> dict:
     token = os.getenv("TELEGRAM_BOT_TOKEN")
-    r = requests.post(f"https://api.telegram.org/bot{token}/{method}", json=params, timeout=http_timeout)
-    r.raise_for_status()
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{token}/{method}", json=params, timeout=http_timeout)
+        r.raise_for_status()
+    except requests.RequestException as e:
+        # requests puts the URL, and so the bot token, in its messages: never let it reach the log
+        code = getattr(e.response, "status_code", None) or type(e).__name__
+        raise requests.RequestException(f"Telegram {method} failed ({code})") from None
     return r.json()["result"]
 
 
@@ -47,6 +52,14 @@ def _next_text(wait: float) -> str | None:
             if str(msg.get("chat", {}).get("id")) == _owner() and msg.get("text"):
                 return msg["text"]
     return None
+
+
+def _skip_backlog() -> None:
+    """Start after the newest waiting message: Telegram keeps unread ones for 24 h, and old commands must not run."""
+    global _offset
+    old = _api("getUpdates", offset=-1)
+    if old:
+        _offset = old[-1]["update_id"] + 1
 
 
 @skill()
@@ -75,8 +88,12 @@ def start_bot(make_agent) -> None:
 
     def loop():
         agent = make_agent(confirm)
+        fresh = False
         while True:
             try:
+                if not fresh:
+                    _skip_backlog()
+                    fresh = True
                 text = _next_text(POLL_SECONDS)
                 if text is None:
                     continue
