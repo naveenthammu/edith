@@ -1,7 +1,8 @@
 """Telegram: EDITH sends messages to your phone, and answers what you text the bot.
 
 Needs TELEGRAM_BOT_TOKEN (from @BotFather) and TELEGRAM_CHAT_ID (your own chat) in .env.
-Only messages from TELEGRAM_CHAT_ID are acted on; anyone else who finds the bot is ignored.
+Only the configured person's private-chat messages are accepted. Household/desktop
+capabilities require separately paired access; main supplies a public-information registry.
 """
 import logging
 import os
@@ -32,7 +33,8 @@ def _api(method: str, http_timeout: float = 15, **params) -> dict:
 
 
 def _owner() -> str:
-    return os.getenv("TELEGRAM_CHAT_ID") or ""
+    value = os.getenv("TELEGRAM_CHAT_ID") or ""
+    return value if value.isascii() and value.isdigit() and int(value) > 0 else ""
 
 
 def _send(text: str) -> None:
@@ -43,13 +45,19 @@ def _send(text: str) -> None:
 def _next_text(wait: float) -> str | None:
     """Next text message from the owner within wait seconds, or None."""
     global _offset
+    owner = _owner()
+    if not owner:
+        return None
     deadline = time.monotonic() + wait
     while (left := deadline - time.monotonic()) > 0:
         poll = int(min(POLL_SECONDS, max(left, 1)))
         for u in _api("getUpdates", http_timeout=poll + 10, offset=_offset, timeout=poll):
             _offset = u["update_id"] + 1
             msg = u.get("message") or {}
-            if str(msg.get("chat", {}).get("id")) == _owner() and msg.get("text"):
+            chat, sender = msg.get("chat") or {}, msg.get("from") or {}
+            if (chat.get("type") == "private" and str(chat.get("id")) == owner
+                    and str(sender.get("id")) == owner and not sender.get("is_bot", False)
+                    and isinstance(msg.get("text"), str) and msg["text"]):
                 return msg["text"]
     return None
 
@@ -62,7 +70,7 @@ def _skip_backlog() -> None:
         _offset = old[-1]["update_id"] + 1
 
 
-@skill()
+@skill(confirm=True)
 def send_telegram(text: str) -> str:
     """Send a Telegram message to the user's phone, e.g. a link, a list or a note to read later."""
     if not os.getenv("TELEGRAM_BOT_TOKEN") or not _owner():
@@ -84,7 +92,8 @@ def start_bot(make_agent) -> None:
 
     def confirm(action: str) -> bool:
         _send(f"Are you sure you want to {action}? Reply yes.")
-        return "yes" in (_next_text(CONFIRM_SECONDS) or "").lower().split()
+        from brain.approval import is_affirmative
+        return is_affirmative(_next_text(CONFIRM_SECONDS) or "")
 
     def loop():
         agent = make_agent(confirm)
@@ -101,7 +110,7 @@ def start_bot(make_agent) -> None:
                     agent.reset()
                     _send("Edith here. Ask me anything.")
                     continue
-                log.info("telegram: %s", text)
+                log.info("telegram utterance received (%d characters)", len(text))
                 _send(agent.handle(text))
             except Exception:
                 log.exception("telegram bot failed")

@@ -13,10 +13,11 @@ def test_type_text_focuses_the_named_app_or_refuses(monkeypatch):
     from skills import screen
 
     activated, typed = [], []
-    note = SimpleNamespace(title="Untitled - Notepad", isMinimized=False, activate=lambda: activated.append(1))
+    note = SimpleNamespace(title="Untitled - Notepad", _hWnd=42, isMinimized=False, activate=lambda: activated.append(1))
     monkeypatch.setattr(screen, "OS", "Windows")
     monkeypatch.setattr(screen, "_win_windows", lambda: [note])
     monkeypatch.setattr(screen.time, "sleep", lambda s: None)
+    monkeypatch.setattr("pygetwindow.getActiveWindow", lambda: note)
     monkeypatch.setattr("pyautogui.write", lambda text, interval=0: typed.append(text))
     assert computer.type_text("hi", app="notepad") == "Typed." and activated and typed == ["hi"]
     assert computer.type_text("hi", app="word").startswith("error") and typed == ["hi"]  # nothing typed blind

@@ -20,6 +20,11 @@ playwright>=1.40
 pillow>=10.0
 google-api-python-client>=2.100
 google-auth-oauthlib>=1.2
+# Verified Google identity and offline certificate/signature regression coverage.
+google-auth>=2.62.2
+cryptography>=50.0.2
+# Fresh native Windows ACL verification for protected local connector credentials.
+pywin32>=312; sys_platform == "win32"
 winrt-Windows.UI.Notifications.Management>=2.0; sys_platform == "win32"
 winrt-Windows.UI.Notifications>=2.0; sys_platform == "win32"
 winrt-Windows.ApplicationModel>=2.0; sys_platform == "win32"

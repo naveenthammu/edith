@@ -1,0 +1,31 @@
+{
+  "review_date": "2026-11-20",
+  "commit": "60fa1132886b343e10a889f86307a1d5a2ac7886",
+  "tracked_files": 3056,
+  "total_bytes": 77693903,
+  "text_files": 1849,
+  "binary_files": 1207,
+  "text_lines": 510079,
+  "categories": {
+    "first-party-or-repository-metadata": 11,
+    "bundled-environment-text": 1020,
+    "bundled-binary-or-bytecode": 1206,
+    "dependency-distribution-metadata": 702,
+    "dependency-test": 117
+  },
+  "distribution_metadata_records": 124,
+  "first_party_paths": [
+    ".DS_Store",
+    ".gitattributes",
+    ".idea/.gitignore",
+    ".idea/edith.iml",
+    ".idea/inspectionProfiles/profiles_settings.xml",
+    ".idea/misc.xml",
+    ".idea/modules.xml",
+    "LICENSE",
+    "README.md",
+    "main.py",
+    "test.idec"
+  ],
+  "limitations": "All tracked file bytes read, classified and hashed. This is coverage inventory, not a claim of line-by-line human review of third-party packages, binary decompilation, malware analysis, or a complete dependency vulnerability audit."
+}

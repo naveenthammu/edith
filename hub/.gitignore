@@ -1,0 +1,6 @@
+/target/
+/local/
+*.local.json
+*.db
+*.db-shm
+*.db-wal

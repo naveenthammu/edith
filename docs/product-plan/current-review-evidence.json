@@ -1,0 +1,1409 @@
+{
+  "generated_at_utc": "2026-11-20T02:34:25.114567+00:00",
+  "repository": "C:\\Users\\Dell\\OneDrive\\Documents\\ChatGPT\\E-commers Site\\edith",
+  "commit": "a006344dedf540b02ebbe8ad9d4cd9758ea039e0",
+  "head_ref": "refs/heads/codex/edith-household-prototype",
+  "method": "Python 3.13 standard library only; local Git index/HEAD and tracked Python source reads; AST parsing and isolated pure-function extraction; no EDITH imports",
+  "git_index": {
+    "version": 2,
+    "checksum_verified": true
+  },
+  "counts": {
+    "tracked_files": 57,
+    "tracked_python_files": 44,
+    "python_files_ast_parsed": 44,
+    "python_syntax_errors": 0,
+    "skill_decorators_in_skills_directory": 62,
+    "skills_confirm_true": 13,
+    "skills_confirm_false": 49,
+    "test_functions_in_tests_directory": 149
+  },
+  "tracked_files": [
+    ".env.example",
+    ".gitattributes",
+    ".gitignore",
+    "GRAPH.md",
+    "LICENSE",
+    "README.md",
+    "brain/__init__.py",
+    "brain/agent.py",
+    "brain/fastpath.py",
+    "brain/llm.py",
+    "brain/memory.py",
+    "config.py",
+    "docs/superpowers/plans/2026-11-14-edith-v3.md",
+    "docs/superpowers/plans/2026-11-18-teach-by-showing.md",
+    "docs/superpowers/specs/2026-11-14-edith-v3-design.md",
+    "docs/superpowers/specs/2026-11-18-teach-by-showing-design.md",
+    "main.py",
+    "pytest.ini",
+    "requirements.txt",
+    "skills/__init__.py",
+    "skills/assistant.py",
+    "skills/computer.py",
+    "skills/google_apps.py",
+    "skills/info.py",
+    "skills/media.py",
+    "skills/memory.py",
+    "skills/naukri.py",
+    "skills/notifications.py",
+    "skills/productivity.py",
+    "skills/screen.py",
+    "skills/system.py",
+    "skills/teach.py",
+    "skills/telegram.py",
+    "skills/web.py",
+    "tests/__init__.py",
+    "tests/conftest.py",
+    "tests/test_agent.py",
+    "tests/test_computer.py",
+    "tests/test_config.py",
+    "tests/test_fastpath.py",
+    "tests/test_integrations.py",
+    "tests/test_llm.py",
+    "tests/test_main.py",
+    "tests/test_naukri.py",
+    "tests/test_registry.py",
+    "tests/test_skills.py",
+    "tests/test_stt.py",
+    "tests/test_teach.py",
+    "tests/test_telegram.py",
+    "tests/test_wake.py",
+    "ui/__init__.py",
+    "ui/orb.html",
+    "ui/overlay.py",
+    "voice/__init__.py",
+    "voice/stt.py",
+    "voice/tts.py",
+    "voice/wake.py"
+  ],
+  "python_source_sha256": {
+    "brain/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "brain/agent.py": "733807729610dd0f58c87d45e53fbdc0fb2e9e5d2825b709c720854ee61797b1",
+    "brain/fastpath.py": "6852e93e05b4b488715b868471340023461459dce250fe044943d0b8cc3e99e0",
+    "brain/llm.py": "7d7e8b7ebe126be7fa0f261f5e8b29537f9b27bddf8a555c2030989f11f7c23b",
+    "brain/memory.py": "918f4707a639e221310fc5d1ab2c0b8f682dee26c169fb0d0a659605533aba7c",
+    "config.py": "34dd7594f8eef3104d160063a7e35505320a052e8d3feedc9b37483d65240c0b",
+    "main.py": "94db4f293d7e43d41cfebf9e0c33ffe91f973d9f05891d720510b83398fef0f7",
+    "skills/__init__.py": "c28d6789c105a68ed1dfafd792222eb1cd02d5cf0d7615b50ec4a181af3028ff",
+    "skills/assistant.py": "6c0cac386497afd775518c16930236b009d0f387afdf4c76abc4d52af83f4f1d",
+    "skills/computer.py": "4134ff21f4271bc1777ec21c176e9dbfbe9f24d05cb062e30eaf62c8cb4cb431",
+    "skills/google_apps.py": "5f96bca8c8f97e3be63368f7207e88f5f5cd2faffa2214ec8097fb6fc1a22697",
+    "skills/info.py": "7696fc32ac8b834394831d01cc9ea1e0885f5a3bb33d327af9d0d083e78aedce",
+    "skills/media.py": "52f5af0b1479ac5b4dfeef85565ec5fa6154df3cec3213a2342473433a8536f7",
+    "skills/memory.py": "2f9cc9731ab1e7a784a901a8c08949027cf8f3cd5ebe17b598e022e0be3a8630",
+    "skills/naukri.py": "4316c126effd98964a003015bc2e1365600c14922736e874a964d232456b3cee",
+    "skills/notifications.py": "f793bd645ac9ecf07492d1f7009d2077d4493a80c36cc3e27c5e52f47e65c723",
+    "skills/productivity.py": "a1ae261a63abe1e29ff69b280cf700c14c674e218dd7c87db289f494b7b25ba3",
+    "skills/screen.py": "a3bcd24aa11fcbdb0468fca79d5f06159754de05cfdf3e6104127e851d84cc65",
+    "skills/system.py": "9ceb52a3c7bb534092acc31845328154d0bc01e42f263a46ec65ff252f618eca",
+    "skills/teach.py": "3bff680457c0ea31d7634a811301c386839fd1ff94b36469542657099e2a46e6",
+    "skills/telegram.py": "7bfa21544c34a68af804c512eb86889da40321b6ce3b71e6f94e79911b46e068",
+    "skills/web.py": "4d7ece1997e2ef2deeb5cb1e5aeb2702f16bb56b571df1e73c7177ad7a0e6033",
+    "tests/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/conftest.py": "df9e6d467e3eed114f125529fc2c6deefca890aa458cf64545db9aa8c8323109",
+    "tests/test_agent.py": "ba2283a85a183255da5332aab8007436418c5bf29d70c6765055fa320704dbcd",
+    "tests/test_computer.py": "de575174c3b5fa3e710a5b94c01175629f41fbb283002cdf249b9ef46b57dcbc",
+    "tests/test_config.py": "5e24e27883338507e15fc5e6d94ceae922eedac31461297824a49e4637c467be",
+    "tests/test_fastpath.py": "a12d8bc99bba01ea49267b53c4c3b65dc1319b29f57ffeb20c348ec52a2a49e6",
+    "tests/test_integrations.py": "8819eaac58e1aded606afae5178ab3cff4ebafcbabdce2c11bc630c8894e9d0c",
+    "tests/test_llm.py": "eeb2bdc20224b7ff3ce5948bbfedda48e9f4c612d4bd088fb3bc177b4751cb37",
+    "tests/test_main.py": "47857b52be77e04282aad1af26d72c41e10c79eddd028df6482911da9f7220ab",
+    "tests/test_naukri.py": "af4a100ac3eda51fd8800febad33288e2c8a433eaef4e88e910a4a5a88b90104",
+    "tests/test_registry.py": "6750c33fb38c2d9759684c3c790395d4eb9fc09b9affc3a63580ac4ccc771c15",
+    "tests/test_skills.py": "cb71a633d7c96408f83b369eed0af5d0688522f044614c302ea3d510ca2d306b",
+    "tests/test_stt.py": "dc05ca0d5d6faacda48cb2780a4da3a7f7d0ae8105418e7d98736fd704f6e0bd",
+    "tests/test_teach.py": "dbd977e61cf7e1c6420e07fe262ad0636c877025ec1bd2d4a1dce822bd0dcb87",
+    "tests/test_telegram.py": "339f88fca53e9a11910abd2e2e0506ddd30ea5aa1eb311fd922d48809750c7c3",
+    "tests/test_wake.py": "7a34fac69299f4aa8d83aba2b27718269f6855acaf01ac5bc5e86a0daa13af0e",
+    "ui/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ui/overlay.py": "337a9205f3625b097a78573effb1a9d1be670309ed64e653651a2d4709253c64",
+    "voice/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "voice/stt.py": "c02b589842db81121f069aa53fd7655b5f49186bd400be17b67890c833eec10f",
+    "voice/tts.py": "21a3a2141664ff19b8e2a4e6e735f3bb1f8d0454a64a735a23e6930c1971ec64",
+    "voice/wake.py": "9151f8cf30e37edd13a08825847a09b1d5779055260d3e6728b3d1af76c02647"
+  },
+  "tracked_python_files_raw_bytes_differing_from_index_blob": [
+    "brain/agent.py",
+    "brain/fastpath.py",
+    "brain/llm.py",
+    "brain/memory.py",
+    "config.py",
+    "main.py",
+    "skills/__init__.py",
+    "skills/assistant.py",
+    "skills/computer.py",
+    "skills/google_apps.py",
+    "skills/info.py",
+    "skills/media.py",
+    "skills/memory.py",
+    "skills/naukri.py",
+    "skills/notifications.py",
+    "skills/productivity.py",
+    "skills/screen.py",
+    "skills/system.py",
+    "skills/teach.py",
+    "skills/telegram.py",
+    "skills/web.py",
+    "tests/conftest.py",
+    "tests/test_agent.py",
+    "tests/test_computer.py",
+    "tests/test_config.py",
+    "tests/test_fastpath.py",
+    "tests/test_integrations.py",
+    "tests/test_llm.py",
+    "tests/test_main.py",
+    "tests/test_naukri.py",
+    "tests/test_registry.py",
+    "tests/test_skills.py",
+    "tests/test_stt.py",
+    "tests/test_teach.py",
+    "tests/test_telegram.py",
+    "tests/test_wake.py",
+    "ui/overlay.py",
+    "voice/stt.py",
+    "voice/tts.py",
+    "voice/wake.py"
+  ],
+  "tracked_python_files_differing_from_index_after_crlf_to_lf_normalization": [],
+  "syntax_errors": [],
+  "skill_inventory": [
+    {
+      "path": "skills/assistant.py",
+      "line": 8,
+      "name": "get_brain_mode",
+      "confirm": false
+    },
+    {
+      "path": "skills/assistant.py",
+      "line": 20,
+      "name": "set_brain_mode",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 71,
+      "name": "find_files",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 87,
+      "name": "open_path",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 97,
+      "name": "create_folder",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 105,
+      "name": "move_file",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 116,
+      "name": "delete_file",
+      "confirm": true
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 132,
+      "name": "close_app",
+      "confirm": true
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 156,
+      "name": "window",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 170,
+      "name": "type_text",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 189,
+      "name": "press_keys",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 202,
+      "name": "mouse",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 221,
+      "name": "read_clipboard",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 228,
+      "name": "set_clipboard",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 248,
+      "name": "system_info",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 302,
+      "name": "wifi",
+      "confirm": true
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 308,
+      "name": "bluetooth",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 314,
+      "name": "brightness",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 341,
+      "name": "create_script",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 354,
+      "name": "run_script",
+      "confirm": true
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 383,
+      "name": "save_contact",
+      "confirm": false
+    },
+    {
+      "path": "skills/computer.py",
+      "line": 411,
+      "name": "send_whatsapp",
+      "confirm": true
+    },
+    {
+      "path": "skills/google_apps.py",
+      "line": 60,
+      "name": "connect_google",
+      "confirm": false
+    },
+    {
+      "path": "skills/google_apps.py",
+      "line": 71,
+      "name": "read_email",
+      "confirm": false
+    },
+    {
+      "path": "skills/google_apps.py",
+      "line": 87,
+      "name": "send_email",
+      "confirm": true
+    },
+    {
+      "path": "skills/google_apps.py",
+      "line": 109,
+      "name": "calendar_events",
+      "confirm": false
+    },
+    {
+      "path": "skills/google_apps.py",
+      "line": 120,
+      "name": "add_calendar_event",
+      "confirm": true
+    },
+    {
+      "path": "skills/google_apps.py",
+      "line": 141,
+      "name": "list_tasks",
+      "confirm": false
+    },
+    {
+      "path": "skills/google_apps.py",
+      "line": 161,
+      "name": "add_task",
+      "confirm": false
+    },
+    {
+      "path": "skills/info.py",
+      "line": 13,
+      "name": "get_datetime",
+      "confirm": false
+    },
+    {
+      "path": "skills/info.py",
+      "line": 19,
+      "name": "get_weather",
+      "confirm": false
+    },
+    {
+      "path": "skills/info.py",
+      "line": 48,
+      "name": "wikipedia",
+      "confirm": false
+    },
+    {
+      "path": "skills/media.py",
+      "line": 26,
+      "name": "play_youtube",
+      "confirm": false
+    },
+    {
+      "path": "skills/media.py",
+      "line": 39,
+      "name": "volume",
+      "confirm": false
+    },
+    {
+      "path": "skills/media.py",
+      "line": 53,
+      "name": "set_volume",
+      "confirm": false
+    },
+    {
+      "path": "skills/memory.py",
+      "line": 8,
+      "name": "remember",
+      "confirm": false
+    },
+    {
+      "path": "skills/memory.py",
+      "line": 16,
+      "name": "forget",
+      "confirm": false
+    },
+    {
+      "path": "skills/naukri.py",
+      "line": 58,
+      "name": "naukri_login",
+      "confirm": false
+    },
+    {
+      "path": "skills/naukri.py",
+      "line": 101,
+      "name": "refresh_naukri",
+      "confirm": false
+    },
+    {
+      "path": "skills/notifications.py",
+      "line": 47,
+      "name": "read_notifications",
+      "confirm": false
+    },
+    {
+      "path": "skills/productivity.py",
+      "line": 15,
+      "name": "set_reminder",
+      "confirm": false
+    },
+    {
+      "path": "skills/productivity.py",
+      "line": 27,
+      "name": "add_note",
+      "confirm": false
+    },
+    {
+      "path": "skills/productivity.py",
+      "line": 36,
+      "name": "read_notes",
+      "confirm": false
+    },
+    {
+      "path": "skills/screen.py",
+      "line": 65,
+      "name": "list_open_windows",
+      "confirm": false
+    },
+    {
+      "path": "skills/screen.py",
+      "line": 72,
+      "name": "close_all_apps",
+      "confirm": true
+    },
+    {
+      "path": "skills/screen.py",
+      "line": 168,
+      "name": "look_at_screen",
+      "confirm": false
+    },
+    {
+      "path": "skills/system.py",
+      "line": 21,
+      "name": "lock_pc",
+      "confirm": true
+    },
+    {
+      "path": "skills/system.py",
+      "line": 33,
+      "name": "sleep_pc",
+      "confirm": true
+    },
+    {
+      "path": "skills/system.py",
+      "line": 40,
+      "name": "shutdown_pc",
+      "confirm": true
+    },
+    {
+      "path": "skills/system.py",
+      "line": 47,
+      "name": "cancel_shutdown",
+      "confirm": false
+    },
+    {
+      "path": "skills/system.py",
+      "line": 56,
+      "name": "screenshot",
+      "confirm": false
+    },
+    {
+      "path": "skills/system.py",
+      "line": 76,
+      "name": "battery",
+      "confirm": false
+    },
+    {
+      "path": "skills/teach.py",
+      "line": 206,
+      "name": "start_teaching",
+      "confirm": false
+    },
+    {
+      "path": "skills/teach.py",
+      "line": 218,
+      "name": "cancel_teaching",
+      "confirm": false
+    },
+    {
+      "path": "skills/teach.py",
+      "line": 230,
+      "name": "finish_teaching",
+      "confirm": false
+    },
+    {
+      "path": "skills/teach.py",
+      "line": 302,
+      "name": "do_taught",
+      "confirm": true
+    },
+    {
+      "path": "skills/teach.py",
+      "line": 372,
+      "name": "list_taught",
+      "confirm": false
+    },
+    {
+      "path": "skills/teach.py",
+      "line": 381,
+      "name": "forget_taught",
+      "confirm": true
+    },
+    {
+      "path": "skills/telegram.py",
+      "line": 66,
+      "name": "send_telegram",
+      "confirm": false
+    },
+    {
+      "path": "skills/web.py",
+      "line": 56,
+      "name": "open_website",
+      "confirm": false
+    },
+    {
+      "path": "skills/web.py",
+      "line": 66,
+      "name": "search_google",
+      "confirm": false
+    },
+    {
+      "path": "skills/web.py",
+      "line": 73,
+      "name": "open_app",
+      "confirm": false
+    }
+  ],
+  "test_inventory": [
+    {
+      "path": "tests/test_agent.py",
+      "line": 38,
+      "name": "test_plain_reply_returned"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 43,
+      "name": "test_tool_call_runs_skill_and_sends_result_back"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 57,
+      "name": "test_offline_speaks_tool_result_without_second_model_call"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 66,
+      "name": "test_offline_multi_step_request_goes_back_to_the_model"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 74,
+      "name": "test_spoken_tool_results"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 82,
+      "name": "test_skill_exception_becomes_error_string"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 93,
+      "name": "test_unknown_tool_reported"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 100,
+      "name": "test_tool_call_cap_forces_text_answer"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 111,
+      "name": "test_confirm_skill_runs_only_on_yes"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 128,
+      "name": "test_llm_unavailable_message_and_history_rolled_back"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 134,
+      "name": "test_history_keeps_last_10_user_turns"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 143,
+      "name": "test_reset_clears_history"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 150,
+      "name": "test_forced_final_reply_stored_as_plain_text"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 158,
+      "name": "test_arguments_coerced_to_schema_types"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 169,
+      "name": "test_empty_reply_becomes_done"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 174,
+      "name": "test_learn_stores_new_facts_and_feeds_them_back"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 186,
+      "name": "test_learn_ignores_none_and_empty_conversations"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 196,
+      "name": "test_memory_dedupes_caps_and_forgets"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "line": 207,
+      "name": "test_confirm_question_names_the_target"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 10,
+      "name": "test_type_text_focuses_the_named_app_or_refuses"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 25,
+      "name": "test_every_os_has_power_commands"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 32,
+      "name": "test_risky_skills_need_confirmation"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 42,
+      "name": "test_user_path_resolves_home_folders"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 49,
+      "name": "test_delete_refuses_outside_home_and_home_itself"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 59,
+      "name": "test_find_and_move_files"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 68,
+      "name": "test_scripts_validated_and_run"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 76,
+      "name": "test_contacts_and_phone_validation"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 84,
+      "name": "test_press_keys_rejects_unknown_keys"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 88,
+      "name": "test_radio_rejects_bad_state"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 92,
+      "name": "test_open_app_on_mac_and_linux"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 107,
+      "name": "test_volume_commands_on_mac_and_linux"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 116,
+      "name": "test_screen_skills_registered_with_right_confirmation"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 125,
+      "name": "test_look_at_screen_offline_lists_windows"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 134,
+      "name": "test_screenshot_of_missing_app_is_an_error"
+    },
+    {
+      "path": "tests/test_computer.py",
+      "line": 141,
+      "name": "test_close_app_matches_whole_names_only"
+    },
+    {
+      "path": "tests/test_config.py",
+      "line": 6,
+      "name": "test_load_config_reads_env_file"
+    },
+    {
+      "path": "tests/test_config.py",
+      "line": 22,
+      "name": "test_load_config_without_env_file"
+    },
+    {
+      "path": "tests/test_fastpath.py",
+      "line": 35,
+      "name": "test_matches"
+    },
+    {
+      "path": "tests/test_fastpath.py",
+      "line": 48,
+      "name": "test_leaves_the_rest_to_the_model"
+    },
+    {
+      "path": "tests/test_fastpath.py",
+      "line": 52,
+      "name": "test_open_home_folder"
+    },
+    {
+      "path": "tests/test_fastpath.py",
+      "line": 69,
+      "name": "test_agent_runs_instant_command_without_model"
+    },
+    {
+      "path": "tests/test_fastpath.py",
+      "line": 75,
+      "name": "test_instant_command_still_asks_to_confirm"
+    },
+    {
+      "path": "tests/test_integrations.py",
+      "line": 29,
+      "name": "test_notifications_newest_first_and_filtered"
+    },
+    {
+      "path": "tests/test_integrations.py",
+      "line": 38,
+      "name": "test_read_email_lists_sender_subject_preview"
+    },
+    {
+      "path": "tests/test_integrations.py",
+      "line": 48,
+      "name": "test_add_task_creates_missing_list"
+    },
+    {
+      "path": "tests/test_integrations.py",
+      "line": 57,
+      "name": "test_event_line_timed_and_all_day"
+    },
+    {
+      "path": "tests/test_integrations.py",
+      "line": 63,
+      "name": "test_bad_input_is_rejected_before_calling_google"
+    },
+    {
+      "path": "tests/test_integrations.py",
+      "line": 70,
+      "name": "test_not_connected_messages"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 17,
+      "name": "test_parse_local_reply_tool_call"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 29,
+      "name": "test_parse_local_reply_tool_call_inside_code_fence"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 35,
+      "name": "test_parse_local_reply_plain_text"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 42,
+      "name": "test_parse_local_reply_invalid_json_is_plain_text"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 48,
+      "name": "test_to_local_messages_converts_tool_turns"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 73,
+      "name": "test_to_local_messages_moves_clock_to_newest_message"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 143,
+      "name": "test_claude_tool_call_is_parsed_and_content_kept"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 158,
+      "name": "test_claude_refusal_gives_spoken_answer"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 163,
+      "name": "test_to_claude_messages_groups_tool_results_and_replays_content"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 178,
+      "name": "test_to_claude_messages_converts_local_model_tool_calls"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 188,
+      "name": "test_remote_failure_falls_back_to_local_and_announces_once"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 204,
+      "name": "test_remote_retried_after_offline_window"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 216,
+      "name": "test_remote_success_is_returned"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 221,
+      "name": "test_no_remote_uses_local_only"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 226,
+      "name": "test_both_backends_down_raises_unavailable"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 235,
+      "name": "test_any_api_error_falls_back_to_local"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 243,
+      "name": "test_broken_local_factory_not_retried_during_cooldown"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 257,
+      "name": "test_to_local_messages_truncates_tool_results"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 262,
+      "name": "test_fallback_announcement_failure_does_not_break_chat"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 270,
+      "name": "test_force_offline_skips_remote"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 281,
+      "name": "test_chain_falls_through_to_next_online_model"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 288,
+      "name": "test_chain_raises_when_all_online_models_fail_so_local_takes_over"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 294,
+      "name": "test_chain_vision_picks_claude_only"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 300,
+      "name": "test_openai_remote_strips_claude_content"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 317,
+      "name": "test_local_replies_are_marked_and_offline_is_reported"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 353,
+      "name": "test_local_model_keeps_processed_prompt_on_disk"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 387,
+      "name": "test_openai_remote_revives_dead_proxy_and_retries"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 398,
+      "name": "test_openai_remote_does_not_retry_timeouts"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 407,
+      "name": "test_ask_images_sends_every_image_then_prompt"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 426,
+      "name": "test_local_model_loads_once_across_threads"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "line": 443,
+      "name": "test_one_timeout_is_retried_before_going_offline"
+    },
+    {
+      "path": "tests/test_main.py",
+      "line": 7,
+      "name": "test_ensure_proxy_starts_app_when_port_closed"
+    },
+    {
+      "path": "tests/test_main.py",
+      "line": 18,
+      "name": "test_ensure_proxy_skips_when_running_or_unset"
+    },
+    {
+      "path": "tests/test_main.py",
+      "line": 27,
+      "name": "test_is_goodbye"
+    },
+    {
+      "path": "tests/test_main.py",
+      "line": 59,
+      "name": "test_converse_until_goodbye"
+    },
+    {
+      "path": "tests/test_main.py",
+      "line": 65,
+      "name": "test_converse_answers_request_heard_with_wake_word_first"
+    },
+    {
+      "path": "tests/test_main.py",
+      "line": 71,
+      "name": "test_converse_returns_on_silence"
+    },
+    {
+      "path": "tests/test_main.py",
+      "line": 77,
+      "name": "test_converse_returns_on_microphone_error"
+    },
+    {
+      "path": "tests/test_main.py",
+      "line": 83,
+      "name": "test_is_yes_whole_word_only"
+    },
+    {
+      "path": "tests/test_main.py",
+      "line": 91,
+      "name": "test_converse_leaves_after_three_empty_transcripts"
+    },
+    {
+      "path": "tests/test_main.py",
+      "line": 97,
+      "name": "test_converse_reports_each_turn_for_history"
+    },
+    {
+      "path": "tests/test_naukri.py",
+      "line": 25,
+      "name": "test_daily_refresh_says_why_it_failed"
+    },
+    {
+      "path": "tests/test_naukri.py",
+      "line": 32,
+      "name": "test_daily_refresh_stays_quiet_on_success"
+    },
+    {
+      "path": "tests/test_naukri.py",
+      "line": 38,
+      "name": "test_daily_refresh_tries_once_a_day_across_restarts"
+    },
+    {
+      "path": "tests/test_naukri.py",
+      "line": 48,
+      "name": "test_daily_refresh_waits_for_first_login"
+    },
+    {
+      "path": "tests/test_registry.py",
+      "line": 4,
+      "name": "test_skill_builds_schema_from_hints_and_docstring"
+    },
+    {
+      "path": "tests/test_registry.py",
+      "line": 25,
+      "name": "test_skill_stores_confirm_flag"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 4,
+      "name": "test_resolve_app_known_names"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 10,
+      "name": "test_normalize_url_adds_scheme_and_blocks_others"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 17,
+      "name": "test_open_website_rejects_bad_scheme"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 29,
+      "name": "test_first_video_id_found"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 34,
+      "name": "test_first_video_id_missing"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 38,
+      "name": "test_volume_rejects_unknown_action"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 52,
+      "name": "test_dangerous_system_skills_need_confirmation"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 59,
+      "name": "test_battery_reports_status"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 71,
+      "name": "test_notes_round_trip"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 81,
+      "name": "test_reminder_announces"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 92,
+      "name": "test_reminder_rejects_bad_minutes"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 111,
+      "name": "test_open_app_rejects_command_like_names"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 120,
+      "name": "test_open_app_unknown_plain_name_uses_start_menu"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 132,
+      "name": "test_brain_mode_switch"
+    },
+    {
+      "path": "tests/test_skills.py",
+      "line": 151,
+      "name": "test_get_brain_mode"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 32,
+      "name": "test_listen_keep_buffer_uses_words_said_right_after_wake_word"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 39,
+      "name": "test_listen_drops_old_audio_by_default"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 49,
+      "name": "test_clean_transcript_keeps_real_speech"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 53,
+      "name": "test_clean_transcript_drops_noise_and_loops"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 60,
+      "name": "test_clean_transcript_drops_short_loops_whisper_scores_as_normal"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 69,
+      "name": "test_clean_transcript_keeps_short_natural_repeats"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 90,
+      "name": "test_returns_none_when_nobody_speaks"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 94,
+      "name": "test_records_speech_until_silence"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 100,
+      "name": "test_pre_roll_keeps_at_most_three_chunks"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 105,
+      "name": "test_stops_at_max_length"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 110,
+      "name": "test_short_pause_does_not_stop_recording"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 115,
+      "name": "test_heard_self"
+    },
+    {
+      "path": "tests/test_stt.py",
+      "line": 123,
+      "name": "test_muted_mic_yields_silence"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 17,
+      "name": "test_slug"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 21,
+      "name": "test_group_keys_merges_text_and_chords"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 29,
+      "name": "test_group_keys_backspace_with_no_pending_text_is_a_key"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 33,
+      "name": "test_parse_compiled_reads_fenced_json_and_finds_variables"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 43,
+      "name": "test_parse_compiled_rejects_bad_output"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 48,
+      "name": "test_parse_values"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 55,
+      "name": "test_fill_leaves_unknown_braces"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 89,
+      "name": "test_finish_saves_compiled_skill"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 103,
+      "name": "test_finish_offline_keeps_recording"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 111,
+      "name": "test_finish_without_start"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 115,
+      "name": "test_cancel_discards"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 140,
+      "name": "test_find_click_prefers_exact_match"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 147,
+      "name": "test_find_click_uses_vision_scaled_back"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 154,
+      "name": "test_find_click_falls_back_to_window_position"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 166,
+      "name": "test_do_taught_runs_steps_with_values"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 181,
+      "name": "test_do_taught_asks_for_missing_value"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 186,
+      "name": "test_do_taught_unknown"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 192,
+      "name": "test_list_and_summary"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 200,
+      "name": "test_forget"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 207,
+      "name": "test_finish_refuses_name_without_latin_letters"
+    },
+    {
+      "path": "tests/test_teach.py",
+      "line": 217,
+      "name": "test_broken_task_file_is_skipped"
+    },
+    {
+      "path": "tests/test_telegram.py",
+      "line": 4,
+      "name": "test_only_owner_messages_are_returned"
+    },
+    {
+      "path": "tests/test_telegram.py",
+      "line": 13,
+      "name": "test_send_needs_config"
+    },
+    {
+      "path": "tests/test_telegram.py",
+      "line": 18,
+      "name": "test_backlog_is_skipped_on_start"
+    },
+    {
+      "path": "tests/test_telegram.py",
+      "line": 25,
+      "name": "test_errors_never_carry_the_token"
+    },
+    {
+      "path": "tests/test_wake.py",
+      "line": 4,
+      "name": "test_heard_matches_whole_word"
+    }
+  ],
+  "pure_probes": {
+    "is_yes": {
+      "source": {
+        "path": "main.py",
+        "start_line": 17,
+        "end_line": 18,
+        "source_sha256": "94db4f293d7e43d41cfebf9e0c33ffe91f973d9f05891d720510b83398fef0f7"
+      },
+      "context": [
+        "standard-library re",
+        "restricted builtin set"
+      ],
+      "cases": [
+        {
+          "input": "yes",
+          "result": true
+        },
+        {
+          "input": "no",
+          "result": false
+        },
+        {
+          "input": "no, do not proceed",
+          "result": false
+        },
+        {
+          "input": "do not say yes",
+          "result": true
+        },
+        {
+          "input": "no, not yes",
+          "result": true
+        },
+        {
+          "input": "yesterday",
+          "result": false
+        }
+      ],
+      "interpretation": "Synthetic negated utterances containing a yes token are accepted. No live approval flow was invoked."
+    },
+    "parse_compiled": {
+      "source": {
+        "path": "skills/teach.py",
+        "start_line": 76,
+        "end_line": 90,
+        "source_sha256": "3bff680457c0ea31d7634a811301c386839fd1ff94b36469542657099e2a46e6"
+      },
+      "context": [
+        "standard-library json",
+        "standard-library re",
+        "STEP_KINDS AST literal",
+        "restricted builtin set"
+      ],
+      "cases": [
+        {
+          "input": "{\"description\":\"synthetic boundary check\",\"steps\":[{\"click\":\"Synthetic target\",\"crop\":\"../../synthetic-secret.png\",\"rel\":[0.5,0.5]}]}",
+          "accepted": true,
+          "result": {
+            "description": "synthetic boundary check",
+            "variables": [],
+            "steps": [
+              {
+                "click": "Synthetic target",
+                "crop": "../../synthetic-secret.png",
+                "rel": [
+                  0.5,
+                  0.5
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "input": "{\"description\":\"synthetic boundary check\",\"steps\":[{\"click\":\"Synthetic target\",\"crop\":\"C:/synthetic/outside.png\",\"rel\":[0.5,0.5]}]}",
+          "accepted": true,
+          "result": {
+            "description": "synthetic boundary check",
+            "variables": [],
+            "steps": [
+              {
+                "click": "Synthetic target",
+                "crop": "C:/synthetic/outside.png",
+                "rel": [
+                  0.5,
+                  0.5
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "input": "{\"steps\":[{\"explode\":1}]}",
+          "accepted": false,
+          "exception": "ValueError",
+          "message": "bad step {'explode': 1}"
+        },
+        {
+          "input": "not json",
+          "accepted": false,
+          "exception": "ValueError",
+          "message": "the answer wasn't JSON"
+        }
+      ],
+      "interpretation": "Traversal and absolute crop strings are accepted unchanged; unknown-only step and non-JSON controls are rejected. No crop path was resolved, opened, uploaded, or replayed."
+    }
+  },
+  "probe_execution_note": "An initial extraction attempt stopped on a missing bool annotation builtin before any function call or file write. bool was added to the restricted builtin set and the probe reran.",
+  "assumptions_and_exclusions": [
+    "Inventory uses local stage-zero Git index and HEAD ref files; no Git or other child process was invoked by Python.",
+    "AST checks use tracked working-tree Python bytes. Comparisons to index blobs are provided both raw and after CRLF-to-LF normalization; no historical Git tree/object traversal was performed.",
+    "Skill count covers @skill(...) declarations under skills/ only, excluding test demo decorators.",
+    "Test count counts test_-prefixed function definitions under tests/, not parametrized cases or runtime pytest collection.",
+    "Only two reviewed standalone function AST nodes were executed with explicit standard-library/literal dependencies and restricted builtins; module top-level code was not executed.",
+    "No tests, application startup, GUI/input hooks, microphone/camera, service contact, child processes, installs, or real skill actions were invoked by the Python probe.",
+    "No .env, token, credential, runtime data, or user-document contents were read. Tracked filenames alone are inventoried.",
+    "The only write is this new evidence JSON. Synthetic accepted recipes were not saved as executable taught tasks.",
+    "Syntax success and isolated parser results do not establish runtime correctness, platform compatibility, or comprehensive security."
+  ]
+}

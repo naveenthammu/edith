@@ -7,8 +7,12 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from http.client import HTTPException
 from pathlib import Path
 from typing import Callable
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 import anthropic
 import openai
@@ -65,6 +69,34 @@ def parse_local_reply(text: str) -> Reply:
 # unchanged start of a prompt, so locally the clock rides on the newest message instead: otherwise every
 # request re-read the persona and the whole conversation (43 s for "what is 2 plus 2" in a live run).
 _CLOCK = re.compile(r" ?Current date and time: [^\n]*?\.(?=\n|$)")
+LOCAL_RESULT_CHARS = 12_000
+LOCAL_EVIDENCE_CHARS = 24_000
+
+
+def _local_evidence(messages: list[dict]) -> dict[int, str]:
+    """Bound retained tool evidence, favouring recent sources over old results.
+
+    This is a character budget for tool evidence, not a tokenizer/context-size
+    guarantee. Keep truncation visible so a model can request narrower excerpts.
+    """
+    indices = [i for i, message in enumerate(messages) if message["role"] == "tool"]
+    omitted = "[Earlier tool evidence omitted.]"
+    truncated = "\n[Tool evidence truncated; retrieve a narrower excerpt if needed.]"
+    # Reserve space for wrappers/omission notices, including older messages whose
+    # content no longer fits. No old result can crowd out the latest retrieval.
+    remaining = max(0, LOCAL_EVIDENCE_CHARS - len(indices) * (len("Tool result: ") + len(omitted)))
+    results = {}
+    for index in reversed(indices):
+        content = messages[index].get("content") or ""
+        allowance = min(LOCAL_RESULT_CHARS, remaining)
+        if allowance < len(truncated):
+            results[index] = omitted
+            continue
+        if len(content) > allowance:
+            content = content[:allowance - len(truncated)] + truncated
+        remaining -= len(content)
+        results[index] = content
+    return results
 
 
 def to_local_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
@@ -75,7 +107,8 @@ def to_local_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
         for t in tools
     )
     out, clock = [], ""
-    for m in messages:
+    evidence = _local_evidence(messages)
+    for index, m in enumerate(messages):
         role = m["role"]
         if role == "system":
             content = m["content"]
@@ -86,12 +119,11 @@ def to_local_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
             tool_text = LOCAL_TOOL_PROMPT.format(tools=tool_lines) + "\n\n" if tools else ""
             out.append({"role": "system", "content": tool_text + content})
         elif role == "tool":
-            out.append({"role": "user", "content": f"Tool result: {m['content'][:500]}"})
+            out.append({"role": "user", "content": f"Tool result: {evidence[index]}"})
         elif role == "assistant" and m.get("tool_calls"):
-            fn = m["tool_calls"][0]["function"]
-            out.append(
-                {"role": "assistant", "content": json.dumps({"tool": fn["name"], "args": _loads_args(fn["arguments"])})}
-            )
+            calls = [{"tool": call["function"]["name"], "args": _loads_args(call["function"]["arguments"])}
+                     for call in m["tool_calls"]]
+            out.append({"role": "assistant", "content": json.dumps(calls[0] if len(calls) == 1 else calls)})
         else:
             out.append({"role": role, "content": m.get("content") or ""})
     if clock and out[-1]["role"] != "system":
@@ -291,6 +323,10 @@ class LLM:
                         self.on_fallback()
                     except Exception:
                         log.exception("fallback announcement failed")
+        return self.chat_local(messages, tools)
+
+    def chat_local(self, messages: list[dict], tools: list[dict]) -> Reply:
+        """Private-context entry point: never attempts a remote provider or fallback."""
         if self._local is None and self.clock() < self._local_retry_at:
             raise LLMUnavailable("local model unavailable")
         try:
@@ -393,6 +429,113 @@ class LocalModel:
         self.llm.load_state(state)
 
 
+class _OllamaNoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class OllamaLocal:
+    """Use an already installed local GGUF model through a loopback Ollama server.
+
+    No model pulls, remote provider calls or automatic downloads are performed.
+    Run the trusted Ollama server with OLLAMA_NO_CLOUD=1 as a second boundary;
+    a localhost URL alone does not mean that an Ollama model is local.
+    """
+
+    MAX_RESPONSE = 1_048_576
+    MAX_REQUEST = 1_048_576
+
+    def __init__(self, url: str, model: str, timeout: float = 90):
+        try:
+            parsed = urlsplit(url)
+            safe = (parsed.scheme == "http" and parsed.hostname == "127.0.0.1"
+                    and parsed.port is not None and 0 < parsed.port < 65536
+                    and not parsed.username and not parsed.password
+                    and parsed.path in ("", "/") and not parsed.query and not parsed.fragment)
+        except (ValueError, TypeError, AttributeError):
+            safe = False
+        if not safe:
+            raise ValueError("Ollama URL must be an explicit http://127.0.0.1:port address")
+        if (not isinstance(model, str) or len(model) > 200
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9._-]+)?", model)
+                or model.lower().endswith(("-cloud", ":cloud"))):
+            raise ValueError("Choose an installed local Ollama model, not a cloud model")
+        if not isinstance(timeout, (int, float)) or not 0 < timeout <= 300:
+            raise ValueError("Ollama timeout must be greater than zero and at most 300 seconds")
+        self.url = url.rstrip("/")
+        self.model = model if ":" in model else model + ":latest"
+        self.timeout = timeout
+        self._opener = build_opener(ProxyHandler({}), _OllamaNoRedirect())
+
+    def _request(self, path: str, payload=None, *, timeout: float | None = None) -> dict:
+        try:
+            body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode() if payload is not None else None
+        except (TypeError, ValueError):
+            raise LLMUnavailable("Ollama request is not valid JSON") from None
+        if body is not None and len(body) > self.MAX_REQUEST:
+            raise LLMUnavailable("The local model request exceeds the size limit; shorten the context")
+        request = Request(self.url + path, data=body, method="POST" if body is not None else "GET",
+                          headers={"Content-Type": "application/json", "Accept": "application/json"})
+        try:
+            with self._opener.open(request, timeout=timeout or self.timeout) as response:
+                raw = response.read(self.MAX_RESPONSE + 1)
+        except HTTPError as error:
+            error.close()
+            raise LLMUnavailable("Ollama rejected the local request; check its model and runtime") from None
+        except (URLError, OSError, TimeoutError, HTTPException):
+            raise LLMUnavailable("Ollama is unavailable or timed out; start the local runtime and retry") from None
+        if len(raw) > self.MAX_RESPONSE:
+            raise LLMUnavailable("Ollama response exceeded the size limit")
+        try:
+            value = json.loads(raw)
+            if not isinstance(value, dict) or value.get("error"):
+                raise ValueError("invalid response")
+        except (ValueError, UnicodeError):
+            raise LLMUnavailable("Ollama returned an invalid response") from None
+        return value
+
+    def _require_local_model(self) -> dict:
+        value = self._request("/api/tags", timeout=min(self.timeout, 3))
+        models = value.get("models")
+        if not isinstance(models, list):
+            raise LLMUnavailable("Ollama returned an invalid model inventory")
+        installed = next((m for m in models if isinstance(m, dict)
+                          and self.model in (m.get("name"), m.get("model"))), None)
+        if installed is None:
+            raise LLMUnavailable("The selected model is not installed in Ollama; no automatic download was attempted")
+        if installed.get("remote_host") or installed.get("remote_model"):
+            raise LLMUnavailable("Cloud-backed Ollama models are not permitted for local inference")
+        details = self._request("/api/show", {"model": self.model}, timeout=min(self.timeout, 5))
+        model_details = details.get("details")
+        if (details.get("remote_host") or details.get("remote_model")
+                or not isinstance(model_details, dict) or model_details.get("format") != "gguf"):
+            raise LLMUnavailable("The selected Ollama model is not a verified installed local GGUF model")
+        return installed
+
+    def available(self) -> bool:
+        try:
+            self._require_local_model()
+            return True
+        except LLMUnavailable:
+            return False
+
+    def complete(self, messages: list[dict]) -> str:
+        # Recheck metadata before sending private content, including after a model
+        # alias changes. This trusts the local server; it is not a server sandbox.
+        self._require_local_model()
+        value = self._request("/api/chat", {
+            "model": self.model, "messages": messages, "stream": False, "keep_alive": "5m",
+            "options": {"num_predict": 512, "num_ctx": 8192, "temperature": 0.2},
+        })
+        message = value.get("message")
+        if (value.get("remote_host") or value.get("remote_model") or value.get("done") is not True
+                or value.get("model") != self.model or not isinstance(message, dict)
+                or message.get("role") != "assistant" or not isinstance(message.get("content"), str)
+                or not message["content"].strip()):
+            raise LLMUnavailable("Ollama did not return a complete local answer")
+        return message["content"].strip()
+
+
 def download_local_model(models_dir: Path, local_only: bool = False) -> Path:
     from huggingface_hub import hf_hub_download
 
@@ -422,9 +565,19 @@ def build_llm(cfg, on_fallback: Callable | None = None, revive: Callable[[], boo
     if cfg.base_url and cfg.api_key:
         remotes.append(OpenAIRemote(openai.OpenAI(base_url=cfg.base_url.rstrip("/") + "/v1", api_key=cfg.api_key,
                                                   max_retries=0), cfg.model, revive))
+    provider = getattr(cfg, "local_provider", "llama_cpp")
+    if provider == "ollama":
+        local = OllamaLocal(cfg.ollama_url, cfg.ollama_model)
+        factory = lambda: local
+        ready = local.available
+    elif provider == "llama_cpp":
+        factory = lambda: LocalModel(download_local_model(cfg.models_dir, local_only=True))
+        ready = lambda: (cfg.models_dir / LOCAL_FILE).exists()
+    else:
+        raise ValueError("Unsupported local model provider")
     return LLM(
         RemoteChain(remotes) if remotes else None,
-        local_factory=lambda: LocalModel(download_local_model(cfg.models_dir, local_only=True)),
+        local_factory=factory,
         on_fallback=on_fallback,
-        local_ready=lambda: (cfg.models_dir / LOCAL_FILE).exists(),
+        local_ready=ready,
     )

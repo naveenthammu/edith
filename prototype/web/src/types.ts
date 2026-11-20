@@ -1,0 +1,13 @@
+export type Profile = 'adult' | 'elder' | 'child' | 'guest';
+export type View = 'overview' | 'knowledge' | 'home' | 'developer' | 'play' | 'assist' | 'activity';
+export type Device = { id: string; name: string; room: string; on: boolean; provider: 'demo' };
+export type DocumentInfo = { id: string; title: string; scope: 'household' | 'adult'; created_at: string };
+export type Citation = { document_id: string; title: string; excerpt: string; score: number };
+export type PendingAction = { id: string; kind: 'purchase' | 'message'; title: string; details: Record<string, unknown>; status: 'awaiting_approval' | 'approved_preview' | 'rejected'; created_at: string; expires_at: string; demo: true };
+export type Activity = { id: string; timestamp: string; kind: string; summary: string };
+export type ModelStatus = { available: boolean; model: string; detail: string };
+export type AppState = { profile: Profile; devices: Device[]; documents: DocumentInfo[]; actions: PendingAction[]; activity: Activity[]; model: ModelStatus };
+export type ChatReply = { reply: string; mode: 'local-tool' | 'retrieval' | 'model' | 'curated'; citations: Citation[]; navigate?: string };
+export type VoiceCapabilities = { available: boolean; engine: string; languages: string[]; detail: string };
+export type Settings = { largeText: boolean; readReplies: boolean; speechRate: number };
+export const canManage = (profile: Profile) => profile === 'adult' || profile === 'elder';

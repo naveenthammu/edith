@@ -1,5 +1,6 @@
 """What's on screen: open windows, closing them, app screenshots, and (online) looking at the screen."""
 import io
+import re
 import time
 from pathlib import Path
 
@@ -93,35 +94,56 @@ def close_all_apps() -> str:
 
 
 def focus_window(app: str, wait: float = 3.0) -> bool:
-    """Bring the first window whose title or app name contains `app` to the front; False if none appears
-    within `wait` seconds (an app that was just opened can take a moment to show its window)."""
+    """Activate a matching window and verify foreground ownership before allowing input.
+
+    A successful activation request is insufficient: the OS may refuse focus changes.
+    Platforms without a working foreground query fail closed.
+    """
     needle = app.strip().lower()
+    if not needle:
+        return False
     for _ in range(max(1, int(wait / 0.3))):
-        if OS == "Windows":
-            w = next((w for w in _win_windows() if needle in w.title.lower()), None)
-            if w is not None:
-                try:
+        try:
+            if OS == "Windows":
+                import pygetwindow
+
+                w = next((w for w in _win_windows() if needle in w.title.lower()), None)
+                if w is not None:
                     if w.isMinimized:
                         w.restore()
                     w.activate()
-                except Exception:
-                    pass  # Windows sometimes refuses focus changes; typing then still reaches the open window
-                break
-        elif OS == "Darwin":
-            name = next((n for n in _mac_apps() if needle in n.lower()), None)
-            if name is not None:
-                run(["osascript", "-e", f'tell application "{name}" to activate'])
-                break
-        else:
-            wid = next((wid for wid, title in _linux_windows() if needle in title.lower()), None)
-            if wid is not None:
-                run(["wmctrl", "-ia", wid])
-                break
+                    time.sleep(0.3)
+                    active = pygetwindow.getActiveWindow()
+                    if active is not None and active._hWnd == w._hWnd:
+                        return True
+            elif OS == "Darwin":
+                name = next((n for n in _mac_apps() if needle in n.lower()), None)
+                if name is not None:
+                    quoted = name.replace("\\", "\\\\").replace('"', '\\"')
+                    result = run(["osascript", "-e", f'tell application "{quoted}" to activate'])
+                    if result.returncode:
+                        return False
+                    time.sleep(0.3)
+                    active = run(["osascript", "-e", 'tell application "System Events" to get name of first application process whose frontmost is true'])
+                    if active.returncode == 0 and active.stdout.strip().casefold() == name.casefold():
+                        return True
+            elif OS == "Linux":
+                wid = next((wid for wid, title in _linux_windows() if needle in title.lower()), None)
+                if wid is not None:
+                    result = run(["wmctrl", "-ia", wid])
+                    if result.returncode:
+                        return False
+                    time.sleep(0.3)
+                    active = run(["xprop", "-root", "_NET_ACTIVE_WINDOW"])
+                    found = re.search(r"window id # (0x[0-9a-fA-F]+)", active.stdout)
+                    if active.returncode == 0 and found and int(found[1], 16) == int(wid, 16):
+                        return True
+            else:
+                return False
+        except Exception:
+            return False
         time.sleep(0.3)
-    else:
-        return False
-    time.sleep(0.3)  # let the window take keyboard focus before anything is typed
-    return True
+    return False
 
 
 def capture_window(app: str, path: Path) -> str | None:

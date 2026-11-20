@@ -6,8 +6,10 @@ Replay finds each click by exact picture match, then Claude vision, then the rec
 import io
 import json
 import logging
+import math
 import re
 import shutil
+import stat
 import threading
 import time
 from pathlib import Path
@@ -25,6 +27,9 @@ PRIVATE = ("password", "sign in", "log in", "login")
 OWN_WINDOW = "EDITH"  # the overlay's title
 STEP_PAUSE = 0.4  # seconds between replayed steps, so apps keep up
 MAX_WAIT = 10
+MAX_STEPS = 100
+MAX_RECIPE_BYTES = 256_000
+MAX_CROP_BYTES = 2_000_000
 MOD_NAMES = {"ctrl_l": "ctrl", "ctrl_r": "ctrl", "ctrl": "ctrl", "alt_l": "alt", "alt_r": "alt", "alt_gr": "alt",
              "alt": "alt", "shift": "shift", "shift_l": "shift", "shift_r": "shift",
              "cmd": "win", "cmd_l": "win", "cmd_r": "win"}
@@ -75,19 +80,94 @@ def group_keys(events: list[dict]) -> list[dict]:
 
 def parse_compiled(text: str) -> dict:
     """Check Claude's compiled steps; raise ValueError if they aren't usable."""
+    if not isinstance(text, str) or len(text.encode("utf-8")) > MAX_RECIPE_BYTES:
+        raise ValueError("recipe is too large")
     start, end = text.find("{"), text.rfind("}")
     try:
         data = json.loads(text[start:end + 1])
     except ValueError:
         raise ValueError("the answer wasn't JSON") from None
-    steps = data.get("steps") if isinstance(data, dict) else None
-    if not isinstance(steps, list) or not steps:
-        raise ValueError("no steps")
-    for s in steps:
-        if not isinstance(s, dict) or len(STEP_KINDS & s.keys()) != 1:
-            raise ValueError(f"bad step {s}")
-    variables = sorted({v for s in steps if "type" in s for v in re.findall(r"\{(\w+)\}", str(s["type"]))})
-    return {"description": str(data.get("description", "")), "variables": variables, "steps": steps}
+    return _validate_recipe(data)
+
+
+def _text(value, maximum: int, *, empty: bool = False) -> bool:
+    return isinstance(value, str) and len(value) <= maximum and "\x00" not in value and (empty or bool(value.strip()))
+
+
+def _number(value, minimum: float, maximum: float) -> bool:
+    return type(value) in (int, float) and math.isfinite(value) and minimum <= value <= maximum
+
+
+def _crop_name(name) -> bool:
+    # Recorder produces flat numbered PNGs. Do not permit paths, drives, ADS or hidden files.
+    return isinstance(name, str) and re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,123}\.png", name, re.IGNORECASE) is not None
+
+
+def _unlinked(path: Path):
+    metadata = path.lstat()
+    if stat.S_ISLNK(metadata.st_mode) or getattr(metadata, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0):
+        raise ValueError("linked task paths are not allowed")
+    return metadata
+
+
+def _crop_path(folder: Path, name: str) -> Path:
+    """Return a bounded regular PNG path in this task; never follow links or reparse points."""
+    if not _crop_name(name):
+        raise ValueError("crop must be a PNG filename inside the task")
+    try:
+        if not stat.S_ISDIR(_unlinked(folder).st_mode):
+            raise ValueError("task folder is not a directory")
+        path = folder / name
+        metadata = _unlinked(path)
+        if not stat.S_ISREG(metadata.st_mode) or not 0 < metadata.st_size <= MAX_CROP_BYTES:
+            raise ValueError("crop must be a regular image no larger than 2 MB")
+        if path.resolve().parent != folder.resolve():
+            raise ValueError("crop escapes its task folder")
+        return path
+    except OSError:
+        raise ValueError("crop is missing or unreadable") from None
+
+
+def _validate_recipe(data, folder: Path | None = None) -> dict:
+    if not isinstance(data, dict) or set(data) - {"name", "description", "variables", "steps"}:
+        raise ValueError("unknown recipe fields")
+    if "name" in data and not _text(data["name"], 120):
+        raise ValueError("invalid task name")
+    description = data.get("description", "")
+    if not _text(description, 500, empty=True):
+        raise ValueError("invalid description")
+    steps = data.get("steps")
+    if not isinstance(steps, list) or not 1 <= len(steps) <= MAX_STEPS:
+        raise ValueError("recipe needs between 1 and 100 steps")
+    for step in steps:
+        if not isinstance(step, dict) or len(STEP_KINDS & step.keys()) != 1:
+            raise ValueError("each step must have one action")
+        kind = next(iter(STEP_KINDS & step.keys()))
+        allowed = {"click", "crop", "rel"} if kind == "click" else {kind}
+        if set(step) - allowed:
+            raise ValueError("unknown step fields")
+        if kind in {"focus", "click", "keys"} and not _text(step[kind], 200):
+            raise ValueError(f"invalid {kind} text")
+        if kind == "type" and not _text(step[kind], 10_000, empty=True):
+            raise ValueError("invalid typed text")
+        if kind == "keys" and len(step[kind].replace(" ", "+").split("+")) > 6:
+            raise ValueError("key chord has too many keys")
+        if kind == "wait" and not _number(step[kind], 0, MAX_WAIT):
+            raise ValueError("wait must be between 0 and 10 seconds")
+        if kind == "click":
+            if not _crop_name(step.get("crop")):
+                raise ValueError("crop must be a PNG filename inside the task")
+            if "rel" in step and (not isinstance(step["rel"], list) or len(step["rel"]) != 2
+                                  or any(not _number(n, 0, 1) for n in step["rel"])):
+                raise ValueError("relative coordinates must be two numbers between 0 and 1")
+            if folder is not None:
+                _crop_path(folder, step["crop"])
+    variables = sorted({v for step in steps if "type" in step for v in re.findall(r"\{(\w+)\}", step["type"])})
+    if any(len(v) > 64 for v in variables) or len(variables) > 30:
+        raise ValueError("too many or overlong variables")
+    if "variables" in data and data["variables"] != variables:
+        raise ValueError("variable list does not match typed placeholders")
+    return {"description": description, "variables": variables, "steps": steps}
 
 
 def parse_values(values: str, variables: list[str]) -> dict:
@@ -158,10 +238,11 @@ class Recorder:
         self._m.stop()
 
     def _add(self, event: dict) -> None:
-        self.events.append({**event, "t": round(time.monotonic(), 2)})
+        if not self._stop.is_set():
+            self.events.append({**event, "t": round(time.monotonic(), 2)})
 
     def _click(self, x, y, button, pressed):
-        if not pressed:
+        if self._stop.is_set() or not pressed:
             return
         title, rect = _active()
         if _skip(title):
@@ -173,6 +254,8 @@ class Recorder:
         self._add({"kind": "click", "x": x, "y": y, "button": button.name, "title": title, "rect": rect, "crop": name})
 
     def _press(self, key):
+        if self._stop.is_set():
+            return
         name = _key_name(key)
         if name in ("ctrl", "alt", "shift", "win"):
             self.mods.add(name)
@@ -180,6 +263,8 @@ class Recorder:
             self._add({"kind": "key", "key": name, "mods": sorted(self.mods)})
 
     def _release(self, key):
+        if self._stop.is_set():
+            return
         self.mods.discard(_key_name(key))
 
     def _watch_focus(self):
@@ -230,13 +315,16 @@ def cancel_teaching() -> str:
 def finish_teaching(name: str) -> str:
     """Stop watching and learn what the user just did as a task with this name, e.g. 'Monday report'."""
     global _rec
-    from brain.llm import REMOTE_ERRORS
-
     if _rec is None:
         return "error: I'm not watching anything. Say 'watch me' first."
+    # "Done" always ends capture, even if naming or compilation cannot finish.
+    _rec.stop()
     if not slug(name):  # an empty slug would point at the whole taught folder and delete every task
         return "error: give the task a name with English letters or numbers, sir."
-    _rec.stop()
+    if not _text(name, 120):
+        return "error: give the task a name no longer than 120 characters."
+    from brain.llm import REMOTE_ERRORS
+
     events = group_keys(_rec.events)
     if not events:
         return cancel_teaching() + " I didn't see you do anything."
@@ -244,9 +332,10 @@ def finish_teaching(name: str) -> str:
     offline = "I need internet to learn this, sir. Say done again when we're online, or cancel."
     if seer is None:
         return offline
-    crops = [(_rec.dir / e["crop"]).read_bytes() for e in events if e["kind"] == "click"]
     try:
+        crops = [_crop_path(_rec.dir, e["crop"]).read_bytes() for e in events if e["kind"] == "click"]
         recipe = parse_compiled(seer.ask_images(crops, COMPILE_PROMPT + json.dumps(events), 4096))
+        _validate_recipe(recipe, _rec.dir)
     except REMOTE_ERRORS:
         return offline
     except ValueError as e:
@@ -262,12 +351,29 @@ def finish_teaching(name: str) -> str:
 
 # ---------- replay ----------
 
+def _load_task(folder: Path) -> dict:
+    _unlinked(TAUGHT)
+    _unlinked(folder)
+    task_path = folder / "skill.json"
+    metadata = _unlinked(task_path)
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_RECIPE_BYTES:
+        raise ValueError("task file is too large or is not a regular file")
+    if folder.resolve().parent != TAUGHT.resolve():
+        raise ValueError("task escapes the taught folder")
+    task = json.loads(task_path.read_text(encoding="utf-8"))
+    checked = _validate_recipe(task, folder)
+    if "name" not in task:
+        raise ValueError("task name is missing")
+    return {"name": task["name"], **checked}
+
+
 def find_click(step: dict, folder: Path, seer, rect: list | None) -> tuple[int, int] | None:
     """Where to click now: exact picture match, then Claude vision, then the recorded spot in the window."""
+    _validate_recipe({"steps": [step]}, folder)
+    crop = _crop_path(folder, step["crop"])
     import pyautogui
 
-    crop = folder / step.get("crop", "")
-    if step.get("crop") and crop.exists():
+    if crop.exists():
         try:
             box = pyautogui.locateOnScreen(str(crop))
         except Exception:  # pyscreeze raises ImageNotFoundException instead of returning None in newer versions
@@ -283,18 +389,20 @@ def find_click(step: dict, folder: Path, seer, rect: list | None) -> tuple[int, 
             buf = io.BytesIO()
             shot.save(buf, "PNG")
             try:
-                reply = seer.ask_images([buf.getvalue(), crop.read_bytes()], (
+                reply = seer.ask_images([buf.getvalue(), _crop_path(folder, step["crop"]).read_bytes()], (
                     f"The second image shows a UI element: {step['click']}. Find it in the first image, "
                     f"a {shot.width}x{shot.height} screenshot. Reply only with the pixel x,y of its centre, or none."))
             except REMOTE_ERRORS:
                 reply = ""
             found = re.search(r"(\d+)\s*,\s*(\d+)", reply)
-            if found:
+            if found and int(found[1]) < shot.width and int(found[2]) < shot.height:
                 scale = full_w / shot.width
                 return round(int(found[1]) * scale), round(int(found[2]) * scale)
-    if rect and step.get("rel"):
+    if (isinstance(rect, (list, tuple)) and len(rect) == 4
+            and all(type(v) in (int, float) and math.isfinite(v) for v in rect)
+            and rect[2] > 0 and rect[3] > 0 and step.get("rel")):
         left, top, w, h = rect
-        return round(left + step["rel"][0] * w), round(top + step["rel"][1] * h)
+        return min(round(left + step["rel"][0] * w), math.ceil(left + w) - 1), min(round(top + step["rel"][1] * h), math.ceil(top + h) - 1)
     return None
 
 
@@ -302,16 +410,24 @@ def find_click(step: dict, folder: Path, seer, rect: list | None) -> tuple[int, 
 def do_taught(name: str, values: str = "") -> str:
     """Do a task the user taught by showing (see the taught tasks list). values fills its blanks,
     e.g. 'month=March' or just 'March' when it has one."""
-    import pyautogui
-
     folder = TAUGHT / slug(name)
-    if not (folder / "skill.json").exists():
+    if not slug(name) or not (folder / "skill.json").exists():
         return f"error: I don't know a task called {name}. {list_taught()}"
-    task = json.loads((folder / "skill.json").read_text())
+    try:
+        task = _load_task(folder)
+    except (OSError, ValueError) as e:
+        return f"error: unsafe or unreadable task ({e})"
     try:
         pairs = parse_values(values, task.get("variables", []))
     except ValueError as e:
         return f"error: tell me the {e} for {task['name']}"
+    import pyautogui
+
+    for step in task["steps"]:
+        if "keys" in step:
+            keys = [key.strip().lower() for key in step["keys"].replace(" ", "+").split("+") if key.strip()]
+            if not keys or any(key not in pyautogui.KEYBOARD_KEYS for key in keys):
+                return "error: task contains an unsupported keyboard shortcut"
     seer, rect, steps = _seer(), None, task["steps"]
     for i, step in enumerate(steps, 1):
         try:
@@ -325,7 +441,9 @@ def do_taught(name: str, values: str = "") -> str:
                     return f"error: step {i}: I couldn't find {step['click']}"
                 pyautogui.click(*pos)
             elif "type" in step:
-                type_text(fill(str(step["type"]), pairs))
+                result = type_text(fill(step["type"], pairs))
+                if result.startswith("error"):
+                    return f"error: step {i}: {result}"
             elif "keys" in step:
                 result = press_keys(str(step["keys"]))
                 if result.startswith("error"):
@@ -334,6 +452,8 @@ def do_taught(name: str, values: str = "") -> str:
                 time.sleep(min(float(step["wait"]), MAX_WAIT))
         except pyautogui.FailSafeException:
             return f"Stopped at step {i} of {len(steps)}, sir."
+        except (OSError, ValueError) as e:
+            return f"error: step {i}: {e}"
         time.sleep(STEP_PAUSE)
     return f"Done: {task['name']}."
 
@@ -348,8 +468,8 @@ def _tasks() -> list[dict]:
         if f.parent.name == "_recording":
             continue
         try:  # every prompt reads these: one broken file must not break EDITH
-            out.append(json.loads(f.read_text()))
-        except ValueError:
+            out.append(_load_task(f.parent))
+        except (OSError, ValueError):
             log.warning("skipping unreadable taught task %s", f)
     return out
 

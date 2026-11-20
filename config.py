@@ -19,11 +19,20 @@ class Config:
     wake_word: str
     data_dir: Path
     models_dir: Path
+    local_provider: str = "llama_cpp"
+    ollama_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen3:4b-instruct"
 
 
 def load_config(root: Path = ROOT) -> Config:
     load_dotenv(root / ".env")
-    data_dir = root / "data"
+    local_provider = (os.getenv("EDITH_LOCAL_PROVIDER") or "llama_cpp").strip().lower()
+    if local_provider not in {"llama_cpp", "ollama"}:
+        raise ValueError("EDITH_LOCAL_PROVIDER must be llama_cpp or ollama")
+    override = os.getenv("EDITH_DATA_DIR")
+    data_dir = Path(override) if override else root / "data"
+    if override and not data_dir.is_absolute():
+        raise ValueError("EDITH_DATA_DIR must be an absolute path")
     models_dir = data_dir / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
     return Config(
@@ -36,6 +45,9 @@ def load_config(root: Path = ROOT) -> Config:
         wake_word=(os.getenv("WAKE_WORD") or "edith").lower(),
         data_dir=data_dir,
         models_dir=models_dir,
+        local_provider=local_provider,
+        ollama_url=os.getenv("EDITH_OLLAMA_URL") or "http://127.0.0.1:11434",
+        ollama_model=os.getenv("EDITH_OLLAMA_MODEL") or "qwen3:4b-instruct",
     )
 
 

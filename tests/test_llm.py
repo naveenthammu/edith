@@ -255,8 +255,42 @@ def test_broken_local_factory_not_retried_during_cooldown():
 
 
 def test_to_local_messages_truncates_tool_results():
-    out = to_local_messages([{"role": "tool", "tool_call_id": "c", "content": "x" * 2000}], [])
-    assert out[0]["content"] == "Tool result: " + "x" * 500
+    out = to_local_messages([{"role": "tool", "tool_call_id": "c", "content": "x" * 100_000}], [])
+    assert len(out[0]["content"]) <= 12_100
+    assert "truncated" in out[0]["content"]
+
+
+def test_to_local_messages_preserves_multiple_rag_sources_after_old_500_character_limit():
+    evidence = ("[source first:chunk1] Plant guide\n" + "Keep soil moist. " * 50 +
+                "\n[source second:chunk2] Seasonal guide\nWater less in winter: wintermarker.")
+    out = to_local_messages([{"role": "tool", "tool_call_id": "search", "content": evidence}], [])
+    assert "[source first:chunk1]" in out[0]["content"]
+    assert "[source second:chunk2]" in out[0]["content"]
+    assert "wintermarker" in out[0]["content"]
+
+
+def test_to_local_messages_keeps_every_call_in_a_multi_tool_turn():
+    calls = [{"id": "c1", "type": "function", "function": {"name": "first_tool", "arguments": '{"item":1}'}},
+             {"id": "c2", "type": "function", "function": {"name": "second_tool", "arguments": '{"item":2}'}}]
+    out = to_local_messages([{"role": "assistant", "content": None, "tool_calls": calls},
+                             {"role": "tool", "tool_call_id": "c1", "content": "first result"},
+                             {"role": "tool", "tool_call_id": "c2", "content": "second result"}], [])
+    assert json.loads(out[0]["content"]) == [
+        {"tool": "first_tool", "args": {"item": 1}}, {"tool": "second_tool", "args": {"item": 2}},
+    ]
+    assert out[1]["content"] == "Tool result: first result"
+    assert out[2]["content"] == "Tool result: second result"
+
+
+def test_to_local_messages_bounds_total_tool_history_and_prioritizes_recent_evidence():
+    messages = [{"role": "tool", "tool_call_id": f"c{i}", "content": f"source{i}:" + "x" * 11_900}
+                for i in range(10)]
+    messages[-1]["content"] += "latestmarker"
+    out = to_local_messages(messages, [])
+    assert sum(len(item["content"]) for item in out) <= 25_000
+    assert "source9:" in out[-1]["content"]
+    assert "latestmarker" in out[-1]["content"]
+    assert "omitted" in out[0]["content"]
 
 
 def test_fallback_announcement_failure_does_not_break_chat():
@@ -451,3 +485,165 @@ def test_one_timeout_is_retried_before_going_offline():
     reply = Reply("online", [], {"role": "assistant", "content": "online"})
     llm = LLM(Flaky(reply), local_factory=lambda: FakeLocal("local"))
     assert llm.chat(MSGS, TOOLS).text == "online" and not llm.offline()
+
+
+@pytest.fixture
+def ollama_endpoint():
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    seen = []
+    replies = {
+        "/api/tags": (200, {"models": [{"name": "qwen3:4b-instruct", "model": "qwen3:4b-instruct"}]}),
+        "/api/show": (200, {"details": {"format": "gguf"}, "model_info": {"general.architecture": "qwen3"}}),
+        "/api/chat": (200, {"model": "qwen3:4b-instruct", "message": {"role": "assistant", "content": "Water on Monday."}, "done": True}),
+    }
+
+    class Handler(BaseHTTPRequestHandler):
+        def answer(self):
+            import time
+
+            size = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(size)) if size else None
+            seen.append((self.command, self.path, body))
+            status, value = replies.get(self.path, (404, {}))
+            time.sleep(replies.get("delay:" + self.path, 0))
+            data = value if isinstance(value, bytes) else json.dumps(value).encode()
+            self.send_response(status)
+            if status == 302:
+                self.send_header("Location", "/unexpected-redirect")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            try:
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass  # timeout/size-limit tests deliberately close the client socket
+
+        do_GET = answer
+        do_POST = answer
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    yield f"http://127.0.0.1:{server.server_port}", seen, replies
+    server.shutdown()
+    server.server_close()
+    worker.join()
+
+
+def test_ollama_local_chat_uses_existing_local_model_and_ignores_proxy(ollama_endpoint, monkeypatch):
+    from brain.llm import OllamaLocal
+
+    url, seen, _ = ollama_endpoint
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:1")
+    monkeypatch.setenv("NO_PROXY", "")
+    model = OllamaLocal(url, "qwen3:4b-instruct")
+    messages = [{"role": "user", "content": "private local fixture"}]
+    assert model.complete(messages) == "Water on Monday."
+    assert [path for _, path, _ in seen] == ["/api/tags", "/api/show", "/api/chat"]
+    request = seen[-1][2]
+    assert request["messages"] == messages and request["stream"] is False
+    assert request["model"] == "qwen3:4b-instruct"
+
+
+@pytest.mark.parametrize("url", ["https://ollama.com", "http://localhost:11434", "http://127.0.0.1.evil:11434",
+                                 "http://user:pass@127.0.0.1:11434", "http://127.0.0.1:11434/path", "http://0.0.0.0:11434"])
+def test_ollama_refuses_nonliteral_loopback_urls(url):
+    from brain.llm import OllamaLocal
+
+    with pytest.raises(ValueError):
+        OllamaLocal(url, "qwen3:4b-instruct")
+
+
+@pytest.mark.parametrize("model", ["gpt-oss:120b-cloud", "model:cloud", "https://remote.example/model", "model\nheader"])
+def test_ollama_refuses_cloud_tags_and_invalid_model_names(model):
+    from brain.llm import OllamaLocal
+
+    with pytest.raises(ValueError):
+        OllamaLocal("http://127.0.0.1:11434", model)
+
+
+def test_ollama_redirect_or_remote_model_metadata_never_receives_private_prompt(ollama_endpoint):
+    from brain.llm import OllamaLocal
+
+    url, seen, replies = ollama_endpoint
+    model = OllamaLocal(url, "qwen3:4b-instruct")
+    replies["/api/show"] = (302, {})
+    with pytest.raises(LLMUnavailable):
+        model.complete([{ "role": "user", "content": "private marker"}])
+    assert all(path not in ("/api/chat", "/unexpected-redirect") for _, path, _ in seen)
+    seen.clear()
+    replies["/api/show"] = (200, {"details": {"format": "gguf"}, "remote_host": "https://ollama.com", "remote_model": "remote-name"})
+    with pytest.raises(LLMUnavailable):
+        model.complete([{ "role": "user", "content": "private marker"}])
+    assert all(path != "/api/chat" for _, path, _ in seen)
+
+
+def test_ollama_missing_model_does_not_download_or_send_prompt(ollama_endpoint):
+    from brain.llm import OllamaLocal
+
+    url, seen, replies = ollama_endpoint
+    replies["/api/tags"] = (200, {"models": []})
+    model = OllamaLocal(url, "qwen3:4b-instruct")
+    assert model.available() is False
+    with pytest.raises(LLMUnavailable):
+        model.complete([{ "role": "user", "content": "private marker"}])
+    assert all(path == "/api/tags" for _, path, _ in seen)
+
+
+@pytest.mark.parametrize("body", [b"not json", b"x" * 1_100_000,
+                                  {"message": {"content": ""}, "done": True},
+                                  {"message": {"content": "partial"}, "done": False},
+                                  {"model": "qwen3:4b-instruct", "message": {"role": "user", "content": "wrong role"}, "done": True},
+                                  {"model": "wrong-model:tag", "message": {"role": "assistant", "content": "wrong model"}, "done": True}])
+def test_ollama_invalid_or_unfinished_response_is_not_an_answer(ollama_endpoint, body):
+    from brain.llm import OllamaLocal
+
+    url, _, replies = ollama_endpoint
+    replies["/api/chat"] = (200, body)
+    with pytest.raises(LLMUnavailable):
+        OllamaLocal(url, "qwen3:4b-instruct").complete(MSGS)
+
+
+def test_ollama_error_body_is_not_disclosed_or_retried_remotely(ollama_endpoint):
+    from brain.llm import OllamaLocal
+
+    url, _, replies = ollama_endpoint
+    replies["/api/chat"] = (500, {"error": "private-marker-must-not-leak"})
+
+    class ForbiddenRemote:
+        def chat(self, *args):
+            pytest.fail("local-provider failure must not trigger remote inference")
+
+    llm = LLM(ForbiddenRemote(), lambda: OllamaLocal(url, "qwen3:4b-instruct"))
+    with pytest.raises(LLMUnavailable) as caught:
+        llm.chat_local(MSGS, [])
+    assert "private-marker" not in str(caught.value)
+
+
+def test_ollama_chat_timeout_is_reported_without_retry_or_download(ollama_endpoint):
+    from brain.llm import OllamaLocal
+
+    url, seen, replies = ollama_endpoint
+    replies["delay:/api/chat"] = 0.25
+    with pytest.raises(LLMUnavailable, match="timed out"):
+        OllamaLocal(url, "qwen3:4b-instruct", timeout=0.05).complete(MSGS)
+    assert len([path for _, path, _ in seen if path == "/api/chat"]) == 1
+    assert all(path != "/api/pull" for _, path, _ in seen)
+
+
+def test_build_llm_selects_ollama_without_any_gguf_download(ollama_endpoint, monkeypatch, tmp_path):
+    from brain import llm as module
+    from config import Config
+
+    url, seen, _ = ollama_endpoint
+    monkeypatch.setattr(module, "download_local_model", lambda *args, **kwargs: pytest.fail("Ollama must not download GGUF"))
+    cfg = Config(None, "unused", None, None, "auto", 0.01, "edith", tmp_path, tmp_path / "models",
+                 local_provider="ollama", ollama_url=url, ollama_model="qwen3:4b-instruct")
+    llm = module.build_llm(cfg)
+    assert llm.local_ready() is True
+    assert llm.chat_local(MSGS, []).text == "Water on Monday."
+    assert not (tmp_path / "models").exists()
+    assert all(path != "/api/pull" for _, path, _ in seen)

@@ -2,11 +2,13 @@
 
 A voice assistant for Windows, macOS and Linux. Say "Edith", then talk normally. EDITH can work with files, apps and windows, type and press keys, use the clipboard, change Wi-Fi, Bluetooth, brightness and volume, write and run scripts, send WhatsApp messages, keep your Naukri profile fresh, and answer questions. She remembers what she learns about you.
 
+**Central household engine (in progress):** the existing interface can now use a Rust hub with scoped retrieval, durable reminders, contacts, an email approval journal and reviewed own-store Shopify checkout. Catalog selections become local proposals; exact voice confirmation controls cart preparation and separate checkout opening. Payment remains in the merchant checkout. Paired clients have separate roles and local-only reasoning. Optional household Gmail onboarding is separate from the older personal-mode integration below; sending requires exact draft review and confirmation. The capabilities in the introduction describe personal desktop mode; paired household mode exposes only explicitly scoped tools. See the [setup/runbook](docs/product-plan/central-engine-runbook.md) and [Rust API](hub/README.md). No new frontend is required. Home Assistant setup has been deferred; no physical devices or personal/merchant accounts were connected by this change.
+
 ## How it works
 
 - Wake word: Vosk, offline.
-- Speech-to-text: faster-whisper `small.en`, offline. Tuned for accented English.
-- Brain: Claude (`claude-opus-5-5`) when online. Without internet or an API key, EDITH uses Qwen3-4B-Instruct running locally on the CPU with llama-cpp-python (no GPU needed, about 4 GB of RAM). The very first start processes its long instruction prompt once (about 2 minutes) and saves it next to the model; after that the offline brain is ready about 10 seconds after startup. Offline answers take about 5–15 seconds: EDITH reads a tool's result out directly instead of asking the model a second time. Requests with several steps ("open notepad and type hi") still go back to the model for each step, so they take longer.
+- Speech-to-text: faster-whisper `small.en`, local after model provisioning. Live language/accent and acoustic accuracy must be measured on the installation.
+- Brain: configured Anthropic provider, then an optional OpenAI-compatible endpoint, then local inference. Local inference can use llama-cpp-python or an installed Ollama GGUF model. Paired household conversations use local inference from their first utterance; private retrieval cannot fall back to cloud. Configured child mode uses curated local games instead of open-ended inference. Provider/model IDs in configuration must be verified against the account being used. CPU latency depends on context and tool turns; individual synthetic grounded-answer samples took about 18–32 seconds on this development PC, not yet conversational-speed performance.
 - Memory: after each conversation, Claude notes lasting facts about you (names, preferences, corrections) in `data/memory.txt`. Every later conversation starts with them. It's a plain text file you can read and edit.
 - Voice: Windows SAPI on Windows, pyttsx3 elsewhere (macOS speech, espeak-ng on Linux).
 - Overlay: a small galaxy card in the top-right corner, drawn by pywebview.
@@ -22,21 +24,21 @@ A voice assistant for Windows, macOS and Linux. Say "Edith", then talk normally.
    python3.12 -m venv venv                         # Windows: py -3.12 -m venv venv
    venv/bin/python -m pip install -r requirements.txt   # Windows: venv/Scripts/python
    ```
-3. Get a Claude API key at https://console.anthropic.com. Copy `.env.example` to `.env` and set `ANTHROPIC_API_KEY`. Never commit `.env`. Without a key, EDITH runs offline only.
+3. Copy `.env.example` to `.env` if configuring personal mode. `ANTHROPIC_API_KEY` optionally enables Anthropic; `BASE_URL`, `API_KEY` and `MODEL` optionally enable a compatible endpoint. With neither remote provider configured, inference stays local. Never commit `.env`. For paired household mode, follow the runbook instead of placing hub credentials in `.env`.
 4. Start EDITH from the project folder:
    ```bash
    venv/bin/python main.py      # Windows: venv/Scripts/python main.py
    ```
    Wait for "Edith 3 point o is online". Stop EDITH with Ctrl+C in that terminal.
 
-The first run downloads the Vosk model (about 50 MB), the Whisper model (about 460 MB) and the offline Qwen model (about 4.7 GB, in the background). Later starts take about a minute.
+The first speech run downloads missing Vosk and Whisper assets. In `llama_cpp` mode, EDITH also provisions its configured Qwen GGUF. In `ollama` mode, the selected model must already be installed; EDITH does not pull it or download a duplicate GGUF. Provision assets before expecting offline startup. The Windows development environment has been tested with Python 3.13; setup and acoustic behavior on other platforms remain separate checks.
 
 ## Using it
 
 - Say "Edith", wait for "Yes sir?", then speak.
 - The galaxy card appears in the top-right corner while you talk. **▾** shows what you asked and what EDITH answered this session; **✕** hides the card.
 - Keep talking without the wake word. After 10 seconds of silence, or "bye", EDITH goes back to waiting for "Edith".
-- Anything risky asks "Are you sure?" first: deleting files (they go to the Recycle Bin/Trash, and only inside your home folder), closing apps, running scripts, sending WhatsApp messages, turning Wi-Fi off, lock, sleep and shutdown. Say "yes" to go ahead.
+- Selected tools ask "Are you sure?" first: deleting files, closing apps, running scripts, sending messages and some system actions. Confirmation requires a short explicit affirmative; a sentence containing a negated "yes" is rejected. Personal-mode scripts and generic desktop inputs still have host-user authority, so these flags are not a household sandbox. Paired mode excludes those unscoped tools.
 
 Things to try:
 
@@ -85,12 +87,18 @@ The sign-in token stays in `data/google/token.json`. Delete that file to disconn
 
 Say "read my WhatsApp messages" or "any new notifications?". EDITH reads the notifications Windows shows, so it sees the sender and the preview of each WhatsApp message, email or Teams chat that is still in the notification center. Turn on **Settings > Privacy & security > Notifications > Let apps access your notifications** once. This works on Windows only.
 
-Mail, messages and notifications that EDITH reads are sent to the online model to answer you, like everything else you say.
+In personal mode, an enabled online model can receive conversation and tool content, including mail/notification previews. Paired household mode uses local reasoning, scoped knowledge and a restricted tool registry. Telegram does not inherit the desktop's memory, taught tasks or private document client.
 
 ## Settings (`.env`)
 
-- `ANTHROPIC_API_KEY`: the Claude key. Empty means offline only.
-- `MODEL`: the Claude model (default `claude-opus-5-5`).
+- `ANTHROPIC_API_KEY` and `CLAUDE_MODEL`: Anthropic credentials/model selection. The model string is configuration, not a promise of account access.
+- `BASE_URL`, `API_KEY`, `MODEL`: optional OpenAI-compatible endpoint and its model.
+- `EDITH_LOCAL_PROVIDER`: `llama_cpp` (default) or `ollama`.
+- `EDITH_OLLAMA_URL`, `EDITH_OLLAMA_MODEL`: literal loopback Ollama endpoint and an installed local model. Cloud-backed aliases are rejected.
+- `EDITH_EMBEDDING_MODEL`: optional `nomic-embed-text:v1.5` for local hybrid retrieval. Chosen source documents must be explicitly indexed; missing embeddings fall back to keywords.
+- `EDITH_WORKSPACE_CONFIG`: protected JSON binding a paired adult/elder principal to one source project and separate staging directory. Enables read/search/patch proposals, without automatic application or execution.
+- `EDITH_HUB_CLIENT_CONFIG`: protected paired-client JSON path; enables scoped household mode.
+- `EDITH_DATA_DIR`: optional absolute directory for configured runtime state, logs and speech/model assets. Legacy personal-mode notes, contacts and teaching modules still have their original paths until migrated.
 - `MIC_THRESHOLD`: raise it if background noise keeps EDITH recording, lower it if she misses your voice.
 - `WAKE_WORD`: default `edith`.
 
@@ -104,8 +112,8 @@ Logs are in `data/edith.log`. Notes are in `data/notes.txt`, memory in `data/mem
 
 ## Troubleshooting
 
-- **EDITH hears the wrong words:** each line she heard is in `data/edith.log` as `heard: ...`. Speak a little closer to the mic, or adjust `MIC_THRESHOLD`.
-- **"Switching to offline mode":** Claude wasn't reachable (no internet, a wrong key, or a rate limit). The reason is in `data/edith.log`. EDITH tries Claude again after a minute.
+- **EDITH hears the wrong words:** inspect the existing on-screen transcript. Normal utterance logs now record character counts instead of raw speech text. Adjust the microphone/`MIC_THRESHOLD` after a controlled listening test.
+- **Local model fallback in the log:** a configured remote provider was unavailable. EDITH retries later in personal mode. Fallback is log-only so a delayed failure cannot announce itself after a cancelled turn; paired conversations remain local from the start.
 - **"Overlay unavailable, running voice-only":** the overlay's web view couldn't start (see Setup step 1). Voice still works; details are in `data/edith.log`.
 - **A setting command fails on macOS/Linux:** install the extra tool named in Setup step 1 (`blueutil`, `brightness`, `brightnessctl`, `xclip`).
 - **Preview the orb without EDITH:** open `ui/orb.html?t=12` in a browser.

@@ -5,3 +5,7 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 .idea/
+node_modules/
+dist/
+*.tsbuildinfo
+target/

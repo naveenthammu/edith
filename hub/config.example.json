@@ -1,0 +1,13 @@
+{
+  "database_path": "D:/EdithData/knowledge.db",
+  "bind": "127.0.0.1:8788",
+  "home_entities": [],
+  "principals": [
+    {
+      "id": "desktop-owner",
+      "token": "GENERATE_A_SECRET",
+      "role": "adult",
+      "enabled": true
+    }
+  ]
+}

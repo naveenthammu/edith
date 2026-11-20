@@ -10,6 +10,7 @@ import numpy as np
 
 SAMPLE_RATE = 16000
 CHUNK_SEC = 0.1
+MAX_BUFFER_SEC = 2.0  # bounded recent audio, including while a model/tool is busy
 EPS = 1e-9  # repeated 0.1 additions are not exact in floating point
 PRE_ROLL_CHUNKS = 3  # keep 0.3 s before speech starts
 # Biases Whisper toward EDITH's words: short commands like "notepad" were heard as "not bad".
@@ -62,6 +63,31 @@ def collect_speech(chunks: Iterator[np.ndarray], chunk_sec: float, threshold: fl
 ECHO_TAIL = 0.15  # seconds of EDITH's own voice still reaching the mic after the speaker goes quiet
 
 
+class _MuteEvent(threading.Event):
+    """Keep the overlay's Event API while invalidating audio on both transitions."""
+
+    def __init__(self, mic):
+        super().__init__()
+        self._mic = mic
+
+    def set(self) -> None:
+        with self._mic._capture_lock:
+            super().set()
+            self._mic._capture_revision += 1
+            self._mic._drop_locked()
+        # Stop current output/work outside the capture lock; no engine call may
+        # block the audio callback or prevent the capture revision from changing.
+        callback = getattr(self._mic, 'on_mute', None)
+        if callback is not None:
+            callback()
+
+    def clear(self) -> None:
+        with self._mic._capture_lock:
+            self._mic._drop_locked()
+            self._mic._capture_revision += 1
+            super().clear()
+
+
 class Mic:
     """One microphone stream for the whole session, shared by the wake word and the listener.
 
@@ -72,28 +98,61 @@ class Mic:
     def __init__(self, chunk_sec: float = CHUNK_SEC):
         import sounddevice as sd
 
-        self.q: queue.Queue = queue.Queue()
-        self.muted = threading.Event()  # set by the overlay's mic button: EDITH then hears only silence
+        if not 0 < chunk_sec <= MAX_BUFFER_SEC:
+            raise ValueError("Microphone chunk duration must be between zero and two seconds")
+        self._chunk_sec = chunk_sec
+        self._blocksize = max(1, int(SAMPLE_RATE * chunk_sec))
+        self._capture_lock = threading.RLock()
+        self._capture_revision = 0
+        self.q: queue.Queue = queue.Queue(maxsize=max(1, int(MAX_BUFFER_SEC / chunk_sec)))
+        self.muted = _MuteEvent(self)
         self.stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32",
-                                     blocksize=int(SAMPLE_RATE * chunk_sec),
-                                     callback=lambda data, *_: self.q.put(data[:, 0].copy()))
+                                     blocksize=self._blocksize, callback=self._capture)
         self.stream.start()
 
-    def drop(self) -> None:
-        """Forget audio already captured, such as EDITH's own voice."""
+    @property
+    def capture_revision(self) -> int:
+        """Changes invalidate captured or transcribing utterances after mute changes."""
+        with self._capture_lock:
+            return self._capture_revision
+
+    def _capture(self, data, *_args) -> None:
+        with self._capture_lock:
+            if self.muted.is_set():
+                return  # do not copy or enqueue raw microphone samples while muted
+            frame = data[:, 0].copy()
+            if self.q.full():
+                try:
+                    self.q.get_nowait()  # retain newest audio; never block the audio callback
+                except queue.Empty:
+                    pass
+            self.q.put_nowait(frame)
+
+    def _drop_locked(self) -> None:
         while True:
             try:
                 self.q.get_nowait()
             except queue.Empty:
                 return
 
+    def drop(self) -> None:
+        """Forget audio already captured, such as EDITH's own voice."""
+        with self._capture_lock:
+            self._drop_locked()
+
     def chunks(self) -> Iterator[np.ndarray]:
         while True:
+            revision = self.capture_revision
             try:
-                chunk = self.q.get(timeout=0.5)  # wake up so Ctrl+C works on Windows
+                chunk = self.q.get(timeout=self._chunk_sec)
             except queue.Empty:
+                if self.muted.is_set():
+                    # Preserve listener timeout pacing without storing muted recordings.
+                    yield np.zeros(self._blocksize, dtype=np.float32)
                 continue
-            yield np.zeros_like(chunk) if self.muted.is_set() else chunk
+            with self._capture_lock:
+                stale = self.muted.is_set() or revision != self._capture_revision
+            yield np.zeros_like(chunk) if stale else chunk
 
 
 def heard_self(before: int, speaker) -> bool:
@@ -126,13 +185,17 @@ class Listener:
                 keep_buffer = False  # the buffer now holds EDITH's own voice
             if not keep_buffer:
                 self.mic.drop()
+            revision = getattr(self.mic, "capture_revision", None)
             before = self.speaker.utterances if self.speaker else 0
             audio = collect_speech(self.mic.chunks(), CHUNK_SEC, self.threshold, start_timeout, silence, max_len)
             if not (self.speaker and heard_self(before, self.speaker)):
                 break
             keep_buffer = False
-        if audio is None:
+        if audio is None or revision != getattr(self.mic, "capture_revision", None):
             return None
         segments, _ = self.model.transcribe(audio, language="en", beam_size=5, vad_filter=True,
                                             initial_prompt=VOCABULARY)
-        return clean_transcript(segments)
+        text = clean_transcript(segments)  # Whisper may generate segments lazily
+        if revision != getattr(self.mic, "capture_revision", None):
+            return None
+        return text

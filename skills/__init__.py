@@ -11,6 +11,9 @@ class Skill:
     func: Callable[..., str]
     confirm: bool
     schema: dict
+    local_only: bool = False
+    # Trusted application callback, never part of the model-visible JSON schema.
+    confirmation_formatter: Callable[[dict], str] | None = None
 
 
 REGISTRY: dict[str, Skill] = {}
@@ -33,11 +36,11 @@ def _schema(func: Callable) -> dict:
     }
 
 
-def skill(confirm: bool = False):
+def skill(confirm: bool = False, *, local_only: bool = False):
     """Register a function as a skill the LLM can call."""
 
     def wrap(func):
-        REGISTRY[func.__name__] = Skill(func, confirm, _schema(func))
+        REGISTRY[func.__name__] = Skill(func, confirm, _schema(func), local_only)
         return func
 
     return wrap
@@ -49,5 +52,5 @@ def tool_schemas() -> list[dict]:
 
 def load_all() -> None:
     # Importing each module runs its @skill decorators.
-    from skills import (assistant, computer, google_apps, info, media, memory, naukri,  # noqa: F401
+    from skills import (assistant, computer, google_apps, info, knowledge, media, memory, naukri,  # noqa: F401
                         notifications, productivity, screen, system, teach, telegram, web)

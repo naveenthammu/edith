@@ -120,18 +120,138 @@ def test_heard_self():
     assert heard_self(2, SimpleNamespace(utterances=2, speaking=speaking))
 
 
-def test_muted_mic_yields_silence():
-    import queue
-
-    import numpy as np
-
-    from voice.stt import Mic
-
-    mic = Mic.__new__(Mic)  # no sound card needed
-    mic.q, mic.muted = queue.Queue(), __import__("threading").Event()
-    mic.q.put(np.ones(4, dtype=np.float32))
-    mic.q.put(np.ones(4, dtype=np.float32))
+def test_muted_mic_yields_silence(monkeypatch):
+    mic = real_mic_with_fake_device(monkeypatch)
+    capture(mic, 1.0)
     chunks = mic.chunks()
-    assert next(chunks).sum() == 4
+    assert next(chunks).sum() == 1600
     mic.muted.set()
     assert next(chunks).sum() == 0
+
+
+def real_mic_with_fake_device(monkeypatch, **kwargs):
+    """Only replace the sound card; exercise Mic's real callback and queue."""
+    import sys
+    from voice.stt import Mic
+
+    class InputStream:
+        def __init__(self, **options):
+            self.callback = options["callback"]
+
+        def start(self):
+            pass
+
+    monkeypatch.setitem(sys.modules, "sounddevice", SimpleNamespace(InputStream=InputStream))
+    return Mic(**kwargs)
+
+
+def capture(mic, value):
+    data = np.full((1600, 1), value, dtype=np.float32)
+    mic.stream.callback(data, 1600, None, None)
+
+
+def test_mute_discards_buffered_audio_and_never_enqueues_muted_samples(monkeypatch):
+    mic = real_mic_with_fake_device(monkeypatch)
+    capture(mic, 0.25)
+    assert not mic.q.empty()
+    mic.muted.set()
+    assert mic.q.empty()
+    for _ in range(5):
+        capture(mic, 0.75)
+    assert mic.q.empty()
+    assert np.count_nonzero(next(mic.chunks())) == 0
+    mic.muted.clear()
+    capture(mic, 0.5)
+    assert np.all(next(mic.chunks()) == 0.5)
+
+
+def test_slow_consumer_keeps_recent_audio_with_a_fixed_buffer_limit(monkeypatch):
+    mic = real_mic_with_fake_device(monkeypatch)
+    for n in range(100):
+        capture(mic, n / 100)
+    # At most two seconds: a long model/tool call cannot retain room audio forever.
+    assert 1 <= mic.q.qsize() <= 20
+    frames = [mic.q.get_nowait() for _ in range(mic.q.qsize())]
+    assert np.all(frames[0] >= 0.8)
+    assert np.all(frames[-1] == np.float32(0.99))
+
+
+def test_unmute_drops_any_stale_audio_before_accepting_new_capture(monkeypatch):
+    mic = real_mic_with_fake_device(monkeypatch)
+    mic.muted.set()
+    # A stale producer must not let a pre-unmute frame become a new command.
+    mic.q.put(np.full(1600, 0.75, dtype=np.float32))
+    mic.muted.clear()
+    assert mic.q.empty()
+    capture(mic, 0.25)
+    assert np.all(next(mic.chunks()) == 0.25)
+
+
+def test_mute_change_during_transcription_invalidates_the_previous_command():
+    mic = FakeMic([loud()] * 5)
+    mic.capture_revision = 0
+    listener = fake_listener(mic)
+
+    def transcribe(audio, **kwargs):
+        mic.capture_revision += 1  # mute changed after capture but before the model answered
+        return [seg("Send that message")], None
+
+    listener.model.transcribe = transcribe
+    assert listener.listen(start_timeout=0.6, keep_buffer=True) is None
+
+
+def test_mute_change_during_capture_discards_the_utterance_before_transcription():
+    mic = FakeMic([])
+    mic.capture_revision = 0
+
+    def chunks():
+        yield loud()
+        mic.capture_revision += 1
+        while True:
+            yield quiet()
+
+    mic.chunks = chunks
+    listener = fake_listener(mic)
+
+    def forbidden_transcription(*args, **kwargs):
+        raise AssertionError("Audio invalidated by mute must never reach transcription")
+
+    listener.model.transcribe = forbidden_transcription
+    assert listener.listen(start_timeout=0.6, keep_buffer=True) is None
+
+
+def test_mute_waits_for_inflight_callback_then_removes_its_audio(monkeypatch):
+    mic = real_mic_with_fake_device(monkeypatch)
+    copying, release, muting, muted = (threading.Event() for _ in range(4))
+
+    class InflightSamples:
+        def __getitem__(self, _slice):
+            return self
+
+        def copy(self):
+            copying.set()
+            assert release.wait(2), "test did not release callback"
+            return np.full(1600, 0.75, dtype=np.float32)
+
+    def mute():
+        muting.set()
+        mic.muted.set()
+        muted.set()
+
+    capture_thread = threading.Thread(target=mic.stream.callback, args=(InflightSamples(),))
+    mute_thread = threading.Thread(target=mute)
+    capture_thread.start()
+    try:
+        assert copying.wait(2)
+        mute_thread.start()
+        assert muting.wait(2)
+        # Mute cannot finish while the in-flight producer can still publish audio.
+        assert not muted.wait(0.05)
+    finally:
+        release.set()
+        capture_thread.join(2)
+        if mute_thread.ident is not None:
+            mute_thread.join(2)
+    assert muted.is_set()
+    assert not capture_thread.is_alive() and not mute_thread.is_alive()
+    assert mic.q.empty()
